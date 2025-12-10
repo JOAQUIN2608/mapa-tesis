@@ -1,1076 +1,535 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Escuelas del Partido de Cañuelas — Mapa interactivo mejorado</title>
-
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
-
-  <!-- Tailwind CSS (via CDN for convenience) -->
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Monitor SAE Cañuelas 2025</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    // Configure Tailwind to use the Inter font throughout
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'ui-sans-serif', 'system-ui'],
-          },
-        },
-      },
-    };
-  </script>
-
-  <!-- Leaflet core CSS and JS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Leaflet heatmap plugin for optional heatmaps -->
-  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-
-  <!-- leaflet-image to allow exporting map as an image -->
-  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
-
-  <!-- Chart.js for simple analytics (optional) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Plotly for boxplot visualization -->
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-
-  <!-- PapaParse for CSV parsing -->
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
-  <!-- pako for zlib decompression -->
-  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4.2.0/build/index.umd.min.js"></script>
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
   <style>
-    html,
-    body {
-      height: 100%;
-    }
-    #map {
-      height: 100%;
-    }
-    .leaflet-container {
-      font: 12px/1.2 Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
-        Arial, sans-serif;
-    }
-    /* Small utility button styling for map controls */
-    .map-btn {
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 6px;
-      border: 1px solid #e5e7eb;
-      background: rgba(255, 255, 255, 0.9);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-      cursor: pointer;
-    }
-    .map-btn:hover {
-      background: #ffffff;
-    }
+    body { font-family: 'Inter', sans-serif; }
+    #map { height: 100vh; width: 100%; z-index: 0; }
+    .glass-panel { background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(4px); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+    .legend-box { width: 14px; height: 14px; display: inline-block; border-radius: 3px; margin-right: 8px; border: 1px solid rgba(0,0,0,0.1); }
+    .tab-btn { border-bottom: 2px solid transparent; color: #64748b; }
+    .tab-btn.active { border-bottom-color: #2563eb; color: #1e40af; font-weight: 600; }
+    .zone-label { background: transparent; border: none; box-shadow: none; font-size: 10px; font-weight: 800; color: #334155; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; text-transform: uppercase; white-space: nowrap; }
+    .leaflet-control-download { background: white; width: 34px; height: 34px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.65); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .leaflet-control-download:hover { background: #f4f4f4; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
-  <!-- Header -->
-  <header class="px-4 md:px-6 py-4 border-b bg-white">
-    <div
-      class="max-w-7xl mx-auto flex flex-col md:flex-row gap-3 md:gap-6 md:items-end justify-between"
-    >
-      <div>
-        <h1 class="text-xl md:text-2xl font-bold">
-          Escuelas del Partido de Cañuelas
-        </h1>
-        <p class="text-sm text-gray-600">
-          Zonificación, niveles y prestaciones con descarga de mapa para tesis.
-        </p>
-      </div>
-      <div class="flex items-center gap-2 md:gap-3">
-        <label for="csvFile" class="text-sm">Cargar CSV</label>
-        <input
-          id="csvFile"
-          type="file"
-          accept=".csv"
-          class="text-sm file:mr-2 file:px-3 file:py-2 file:rounded file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-        />
+<body class="flex h-screen overflow-hidden text-slate-800 bg-slate-100">
+
+  <aside id="sidebar-panel" class="w-[420px] bg-white border-r border-slate-200 flex flex-col z-20 shadow-2xl h-full relative flex-shrink-0">
+    <div class="p-5 border-b border-slate-100 bg-slate-50">
+      <h1 class="text-xl font-bold text-slate-800 tracking-tight">SAE CAÑUELAS 2025</h1>
+      <p class="text-xs text-slate-500 font-medium mt-1">Tesina Lic. Sociología FAHCE-UNLP</p>
+    </div>
+
+    <div class="p-4 border-b border-slate-100">
+      <label class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 block">Dimensión de Análisis</label>
+      <div class="grid grid-cols-3 gap-2">
+        <button onclick="setMode('gestion')" id="btn-gestion" class="py-2 px-1 text-xs font-bold rounded border transition shadow-sm">Zonas SAE</button>
+        <button onclick="setMode('iis')" id="btn-iis" class="py-2 px-1 text-xs font-bold rounded border transition shadow-sm">Intensidad</button>
+        <button onclick="setMode('cnp')" id="btn-cnp" class="py-2 px-1 text-xs font-bold rounded border transition shadow-sm">Nutrición</button>
       </div>
     </div>
-  </header>
 
-  <!-- Main layout -->
-  <main
-    class="h-[calc(100vh-80px)] md:h-[calc(100vh-84px)] max-w-7xl mx-auto px-0 md:px-6 py-3 md:py-4"
-  >
-    <div
-      class="w-full h-full grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4"
-    >
-      <!-- Sidebar -->
-      <aside
-        class="order-2 md:order-1 bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col"
-      >
-        <div class="flex">
-          <button
-            class="tablink flex-1 py-3 text-sm font-semibold border-b border-blue-600 text-blue-600"
-            data-tab="filters"
-          >
-            Filtros y detalles
-          </button>
-          <button
-            class="tablink flex-1 py-3 text-sm font-semibold border-b text-gray-600"
-            data-tab="analysis"
-          >
-            Análisis agregado
-          </button>
+    <div class="flex border-b border-slate-200 px-4 space-x-4 bg-white sticky top-0 z-10">
+      <button onclick="switchTab('resumen')" id="tab-resumen" class="tab-btn active py-3 text-xs uppercase tracking-wide flex-1 text-center">Ficha Escuela</button>
+      <button onclick="switchTab('stats')" id="tab-stats" class="tab-btn py-3 text-xs uppercase tracking-wide flex-1 text-center">Estadísticas</button>
+    </div>
+
+    <div id="panel-content" class="flex-1 overflow-y-auto p-4 bg-slate-50/50 relative">
+      <div id="content-resumen" class="animate-fade-in space-y-4">
+        <div id="empty-state" class="text-center py-10 text-slate-400">
+          <p class="text-sm">Selecciona una escuela en el mapa.</p>
         </div>
-        <!-- Filters tab -->
-        <div
-          id="tab-content-filters"
-          class="tabcontent flex-1 overflow-auto p-4 space-y-4"
-        >
-          <div>
-            <label class="block text-sm font-medium">Buscar escuela</label>
-            <input
-              id="searchInput"
-              type="text"
-              placeholder="Escribí parte del nombre..."
-              class="w-full px-3 py-2 border rounded focus:outline-none focus:ring focus:border-blue-300"
-            />
+        <div id="selection-card" class="bg-white rounded-xl border border-blue-200 shadow-md hidden overflow-hidden">
+          <div class="bg-blue-50 p-4 border-b border-blue-100">
+            <h3 class="text-base font-bold text-blue-900 leading-tight" id="sel-title">Nombre Escuela</h3>
+            <div class="flex gap-2 mt-2">
+               <span id="sel-badge-nivel" class="text-[10px] uppercase font-bold bg-white text-blue-600 px-2 py-1 rounded border border-blue-100"></span>
+               <span id="sel-badge-zona" class="text-[10px] uppercase font-bold bg-white text-slate-600 px-2 py-1 rounded border border-slate-200"></span>
+            </div>
           </div>
-          <div>
-            <label class="block text-sm font-medium mb-1">Filtrar por ZONA SAE</label>
-            <div id="zoneFilters" class="flex flex-wrap gap-2"></div>
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-1">Filtrar por NIVEL</label>
-            <div id="levelFilters" class="flex flex-wrap gap-2"></div>
-          </div>
-          <!-- Cobertura filter: choose a SAE service and coverage level -->
-          <div>
-            <label class="block text-sm font-medium mb-1">Filtrar por COBERTURA</label>
-            <select
-              id="coverageType"
-              class="w-full px-2 py-1 border rounded"
-            >
-              <option value="">— Seleccionar tipo —</option>
-              <option value="comedor">Comedor</option>
-              <option value="dm">Desayuno/Merienda</option>
-              <option value="mesa">Módulo mesa</option>
-              <option value="albergue">Albergue</option>
-            </select>
-            <div id="coverageLevels" class="flex flex-wrap gap-2 mt-2"></div>
-          </div>
-          <hr class="my-2" />
-          <div>
-            <h3 class="text-sm font-semibold">Detalles de la escuela seleccionada</h3>
-            <div
-              id="detailsPanel"
-              class="mt-2 text-sm bg-gray-50 border rounded p-3 text-gray-700"
-            >
-              <p class="text-gray-500">
-                Hacé clic en un punto del mapa para ver el detalle.
-              </p>
+          <div class="p-4 space-y-5">
+            <div>
+              <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-100 pb-1">Cupos SAE (Base Oficial)</h4>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-slate-50 p-2 rounded border border-slate-100">
+                  <span class="block text-xl font-bold text-slate-700" id="sel-matricula">-</span>
+                  <span class="text-[10px] text-slate-500 uppercase">Matrícula</span>
+                </div>
+                <div class="bg-orange-50 p-2 rounded border border-orange-100">
+                  <span class="block text-xl font-bold text-orange-700" id="sel-cupos-comedor">-</span>
+                  <span class="text-[10px] text-orange-600 uppercase">Comedor</span>
+                </div>
+                <div class="bg-green-50 p-2 rounded border border-green-100">
+                  <span class="block text-xl font-bold text-green-700" id="sel-cupos-dmc">-</span>
+                  <span class="text-[10px] text-green-600 uppercase">DMC (Des/Mer)</span>
+                </div>
+                <div class="bg-blue-50 p-2 rounded border border-blue-100">
+                  <span class="block text-xl font-bold text-blue-700" id="sel-cupos-mesa">-</span>
+                  <span class="text-[10px] text-blue-600 uppercase">MESA (Cajas)</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-100 pb-1">Indicadores</h4>
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-700">IIS (Intensidad)</span>
+                  <span class="text-sm font-mono font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded" id="sel-iis-val">-</span>
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-700">CNP (Calculado)</span>
+                  <span class="text-sm font-mono font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded" id="sel-cnp-val">-</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        <!-- Analysis tab -->
-        <div
-          id="tab-content-analysis"
-          class="tabcontent hidden flex-1 overflow-auto p-4 space-y-4"
-        >
-          <div class="grid grid-cols-2 gap-3">
-            <div class="bg-slate-100 rounded-xl p-3 border">
-              <p class="text-xs text-gray-600">Total de Escuelas</p>
-              <p id="kpiEscuelas" class="text-xl font-bold">–</p>
-            </div>
-            <div class="bg-slate-100 rounded-xl p-3 border">
-              <p class="text-xs text-gray-600">Total de Matrícula</p>
-              <p id="kpiMatricula" class="text-xl font-bold">–</p>
-            </div>
-          </div>
-          <!-- Gráfico boxplot de IIS por zona (colores según zona SAE) -->
-          <div>
-            <h3 class="text-sm font-semibold mb-2">
-              Distribución del índice de intensidad alimentaria (IIS) por zona (colores según zona SAE)
-            </h3>
-            <canvas id="chartIISBoxplot" height="220"></canvas>
-            <!-- Leyenda de zonas y valores de cuartiles por zona -->
-            <h4 class="text-sm font-semibold mt-4 mb-1">Cuartiles por zona SAE</h4>
-            <div id="iisLegend" class="overflow-auto text-xs"></div>
-          </div>
+      </div>
+
+      <div id="content-stats" class="hidden space-y-6 animate-fade-in bg-white p-2">
+        <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+          <h4 class="text-xs font-bold text-slate-700 mb-2 uppercase border-b pb-2">IIS por Zona (Boxplot)</h4>
+          <div class="h-64 relative w-full"><canvas id="boxPlotIIS"></canvas></div>
         </div>
-      </aside>
-      <!-- Map section -->
-      <section
-        class="order-1 md:order-2 md:col-span-2 bg-white rounded-2xl shadow-sm border overflow-hidden relative"
-      >
-        <div id="map" class="w-full h-full"></div>
-        <!-- Controls overlay -->
-        <div
-          class="absolute top-3 left-3 z-[500] bg-white/90 backdrop-blur rounded-xl shadow border p-2 flex items-center gap-2"
-        >
-          <label class="inline-flex items-center text-sm select-none">
-            <input
-              id="toggleHeat"
-              type="checkbox"
-              class="mr-2 accent-blue-600"
-            />
-            Mapa de calor
-          </label>
-          <button id="btnDownloadMap" class="map-btn">
-            Descargar mapa (PNG/JPG)
-          </button>
+        <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+          <h4 class="text-xs font-bold text-slate-700 mb-2 uppercase border-b pb-2">CNP por Zona (Boxplot)</h4>
+          <div class="h-64 relative w-full"><canvas id="boxPlotCNP"></canvas></div>
         </div>
-      </section>
+      </div>
+    </div>
+
+    <div class="p-4 border-t border-slate-200 bg-white">
+      <button onclick="downloadPanel()" class="w-full py-2 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-700 flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+        Descargar Reporte
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 relative">
+    <div id="map"></div>
+    <div id="legend" class="absolute bottom-6 right-6 z-[1000] glass-panel p-4 rounded-lg text-xs w-56 shadow-xl border border-white/50">
+      <h4 class="font-bold mb-3 text-slate-800 border-b border-slate-200 pb-1">Referencias</h4>
+      <div id="legend-content" class="space-y-1.5 max-h-64 overflow-y-auto pr-1"></div>
     </div>
   </main>
 
-  <script>
-    /*
-     * Mapa interactivo mejorado para Cañuelas.
-     * Añade filtro de zonas SAE utilizando la zonificación oficial, corrige problemas
-     * de codificación de caracteres y aplica colores consistentes entre zonas y puntos.
-     */
+<script id="csv-data" type="text/plain">
+BARRIO,ZONA,ESCUELA,NIVEL,DIRECCION,SECTOR,JORNADA,TOTAL MATRICULA,BUFET/KIOSCO,LATITUD,LONGITUD,CUPOS COMEDOR,CUPOS DESAYUNO/MERIENDA,CUPOS ALBERGUE,PATIOS ABIERTOS,modulo MESA,IIS
+Paraje La Tapie,CAMINO PANELO,E.P. N° 13 Paula Albarracín de Sarmiento,Primario,Camino Panelo,Estatal,Completa/Doble (40 hs. y mas semanales),33,S/D,-35.08303177,-58.78846377,33,66,JC,,27,3.818181818
+Barrio Los Álamos,RUTA 205 - CAMINO A LAS HERAS,JIRIMM N° 4,Inicial,Cuartel 3º Camino Real a Las Heras,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.01862123,-58.81051475,7,7,,,7,4.2
+Gobernador Udaondo,CORREDOR UDAONDO,J. I. N° 905,Inicial,Ruta 16 y calle Panamá,Estatal,Jornada Simple (Hasta 20 hs. semanales),26,S/D,-35.29708726,-58.59289068,30,20,,,17,2.576923077
+Barrio Hipotecario,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 02 Cnel. De Marina Leonardo Rosales,Secundaria,Remedios de Escalada 215,Estatal,Jornada Simple (Hasta 20 hs. semanales),635,S/D,-35.06236728,-58.75264325,60,300,N/C,,306,1.048818898
+Paraje La Tapie,CAMINO PANELO,JIRIMM N° 6 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Camino Panelo,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.08303177,-58.78846377,7,5,,,4,3.2
+Gobernador Udaondo,CORREDOR UDAONDO,E.P. N° 2 Tambor de Tacuarí,Primario,Cuartel 15,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.26434972,-58.67387492,6,6,,,6,3.6
+Barrio Arquitectura,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 11 Nuestra Sra. del Carmen,Primario,Tucumán N° 295,Estatal,Extendida (25 a 29 hs),499,S/D,-35.06240865,-58.75371417,40,430,N/C,,466,1.875751503
+Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,"J. I. N° 906 ""LA CALEDONIA""",Inicial,Urquiza y Sarmiento Ruta Nº 205 Km. 59.5,Estatal,Jornada Simple (Hasta 20 hs. semanales),78,S/D,-35.01893004,-58.7215432,,82,,,83,2.115384615
+Paraje La Leonor,CORREDOR UDAONDO,E.P. N° 7 Sargento Cabral,Primario,Cuartel 14 Camino del Gasoducto,Estatal,Jornada Simple (Hasta 20 hs. semanales),12,S/D,-35.19199013,-58.64993129,16,14,,,16,3.833333333
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 919,Inicial,Acuña y Azcuenaga,Estatal,Jornada Simple (Hasta 20 hs. semanales),140,S/D,-35.05136428,-58.75413829,,180,N/C,,110,2.071428571
+Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 17 Vicente Casares,Primario,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),153,S/D,-34.96405035,-58.6517067,,124,,,109,1.522875817
+Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 902,Inicial,Olavarria 1042,Estatal,Jornada Simple (Hasta 20 hs. semanales),201,S/D,-35.04590565,-58.76306826,,288,N/C,,169,2.273631841
+Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 05,Secundaria,Garcilazo de la Vega N° 165,Estatal,Jornada Simple (Hasta 20 hs. semanales),580,S/D,-34.95374525,-58.73525537,98,300,,,454,1.468965517
+Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 14,Secundaria,"Urquiza S/N Ruta Nº 205 Km. 59,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),149,S/D,-35.01928306,-58.72169429,40,145,,,101,1.919463087
+Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 15 Hipólito Yrigoyen,Primario,Hipólito Yrigoyen 1142,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),177,S/D,-35.04664009,-58.76182712,130,274,N/C,22,132,3.152542373
+Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08 ANEXO 1,Secundaria,"Bicentenario S/N Ruta Nº 205 Km 75,501",Estatal,Jornada Simple (Hasta 20 hs. semanales),57,S/D,-35.07224814,-58.8637215,35,45,,,20,1.754385965
+Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 907,Inicial,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),80,S/D,-34.97890335,-58.67463043,,90,,,73,2.0375
+Paraje La Noria,CORREDOR UDAONDO,E.P. N° 19 Bernardino Rivadavia,Primario,Estación La Noria,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),8,S/D,-35.16567752,-58.78896305,9,9,,,8,3.25
+Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 12 Remedios de Escalada de San Martín,Primario,"Bicentenario S/N Ruta Nº 205 Km 75,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),55,S/D,-35.07244551,-58.86363315,38,62,,,38,2.509090909
+Barrio San Esteban,CORREDOR RUTA 3 CAMINO A CAPITAL,J.I. Nº 908,Inicial,"Ombú y Acacia S/N° Rta. 3 Km. 54,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),229,S/D,-34.96063262,-58.72795605,224,224,,,194,2.80349345
+Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 16 Manuel Belgrano,Primario,Garcilazo de la Vega N° 147,Estatal,Jornada Simple (Hasta 20 hs. semanales),219,S/D,-34.95374525,-58.73525537,65,195,,,227,2.223744292
+Barrio Belgrano de Máximo Paz Oeste,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 26 Mariano Moreno,Primario,"25 de Mayo S/N Rta. 3 Km. 43,5",Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),199,S/D,-34.89861613,-58.64804059,111,308,,34,202,3.291457286
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 27 Bartolomé Mitre,Primario,Moreno N° 317 Esquina Velez Sarfield,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),507,Si,-35.05884857,-58.75942572,13,450,N/C,,255,1.41617357
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Primario,HIPOLITO IRIGOYEN 418,Privada,Jornada Simple (Hasta 20 hs. semanales),181,Si,-35.05084898,-58.76743844,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Secundaria,HIPOLITO IRIGOYEN 418,Privada,Jornada Completa/Doble (40 hs. y mas semanales),87,Si,-35.05084898,-58.76743844,,,,,0,0
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJAN,Primario,SARMIENTO 264,Privada,Jornada Simple (Hasta 20 hs. semanales),208,S/D,-34.9400768,-58.61392138,,,,,0,0
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Inicial,SAN EDUARDO 92,Privada,Jornada Simple (Hasta 20 hs. semanales),267,S/D,-34.9400118,-58.61388948,,,,,0,0
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Secundaria,SARMIENTO 264,Privada,Jornada Simple (Hasta 20 hs. semanales),206,S/D,-34.94003562,-58.61381526,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SANTA MARIA,Primario,MOSCONI 255,Privada,Jornada Simple (Hasta 20 hs. semanales),936,Si,-35.05864217,-58.74807558,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SECUNDARIO SANTA MARIA,Secundaria,CALLE DEL CARMEN E/LARA Y BRANDSEN 441,Privada,Jornada Simple (Hasta 20 hs. semanales),736,Si,-35.05475463,-58.7617634,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,JARDÍN DE INFANTES LA SAGRADA FAMILIA,Inicial,BASAVILBASO E/MORENO Y BRANDSEN 331,Privada,Jornada Simple (Hasta 20 hs. semanales),327,S/D,-35.05807919,-58.75999575,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Inicial,PARAGUAY 728,Privada,Jornada Simple (Hasta 20 hs. semanales),82,S/D,-35.03721646,-58.74341626,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Primario,PARAGUAY 728,Privada,Jornada Extendida (de 21 a 24 hs. semanales),182,S/D,-35.03698613,-58.74329155,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Secundaria,PARAGUAY 728,Privada,Jornada Extendida (30 Hs semanales),179,S/D,-35.03698613,-58.74329155,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Inicial,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),59,S/D,-35.05744769,-58.7596404,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Primario,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),59,S/D,-35.05744769,-58.7596404,,,,,0,0
+cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Secundaria,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),,S/D,-35.05744769,-58.7596404,,,,,0,
+Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.A.S DON BOSCO,Secundaria,Av. Valeria de Crotto 2001,Privada,Extendida,410,Si,-35.1330864,-58.87657567,,,,,0,0
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.S.T. Nº 1 Cnel. Manuel Dorrego,Secundaria,Basavilbaso 253,Estatal,"Jornada Extendida (de 35 a 39 hs. semanales), Jornada Simple (Hasta 20 hs. semanales)",1081,Si,-35.05872514,-58.76063681,100,750,N/C,,444,1.197039778
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 1 Domingo F. Sarmiento,Primario,Del Carmen 517,Estatal,Extendida (25 a 28 hs semanales),537,Si,-35.05439887,-58.7618878,7,475,N/C,,375,1.595903166
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 09,Secundaria,Manuel Acuña N° 1171,Estatal,Jornada Simple (Hasta 20 hs. semanales),529,S/D,-35.05069273,-58.75328858,45,250,N/C,,281,1.088846881
+Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,E.E.S. Nº 16 (Ex - Extensión 3031),Secundaria,Ruta Nº 3 Km. 76.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),72,S/D,-35.1465727,-58.74148636,37,80,,,65,2.527777778
+Barrio La Torre de Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 20 Malvinas Argentinas,Primario,Corrientes N° 278 e/Córdoba y Sta. Fe,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),224,S/D,-34.94557904,-58.62415353,100,230,,,190,2.321428571
+Paraje La Leonor,CORREDOR UDAONDO,JIRIMM N° 5 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Cuartel 14 Camino del Gasoducto,Estatal,Jornada Simple (Hasta 20 hs. semanales),3,S/D,-35.19235773,-58.64995977,2,2,,,2,2
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,"J. I. N° 911 ""EL PEQUEÑO DE ASIS""",Inicial,Antártida Argentina N° 795 Esquina Mitre,Estatal,Jornada Simple (Hasta 20 hs. semanales),128,S/D,-35.04951501,-58.76355394,,155,N/C,,86,1.8828125
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 28 Clotilde Guillén de Rezzano,Primario,Vicente Peñaloza 2349,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),448,S/D,-34.9388936,-58.60916797,458,968,,,389,4.051339286
+Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 06,Secundaria,Pueyrredón y Dupuy Rta. Nº 3 Km. 52.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),399,S/D,-34.93809816,-58.73126751,,287,,,233,1.303258145
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 32 José Manuel Estrada,Primario,Rivadavia N° 467,Estatal,Jornada Extendida (de 21 a 24 hs. semanales),300,S/D,-35.0551473,-58.75782247,,300,N/C,,99,1.33
+Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,"E.E.S. Nº 12 ""JULIO CAO, HÉROE DE MALVINAS""",Secundaria,San Juan N° 2450,Estatal,Jornada Simple (Hasta 20 hs. semanales),168,S/D,-35.04010823,-58.73756626,35,50,N/C,,80,0.9821428571
+Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,E.P. N° 29 Antártida Argentina,Primario,"Ruta Nº 6 Km. 82,500 Camino a La Plata",Estatal,Jornada Completa/Doble (40 hs. y mas semanales),23,S/D,-35.07762311,-58.65486957,24,48,JC,,19,3.956521739
+Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,J. I. N° 910,Inicial,"Mariano de Nocochea 360 Rta.3 Km.52,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),141,S/D,-34.89856895,-58.64797376,62,151,,,150,2.574468085
+Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION I DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº12,Secundaria,Hipólito Yrigoyen 1142,Estatal,Jornada Simple (Hasta 20 hs. semanales),80,S/D,-35.04664009,-58.76182712,22,35,N/C,,45,1.275
+Barrio La Torre de Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 17 (Ex- Extension N° 2100),Secundaria,Corrientes N° 278 e/Córdoba y Sta. Fe,Estatal,Jornada Simple (Hasta 20 hs. semanales),247,S/D,-34.94557904,-58.62415353,,139,,,154,1.186234818
+Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 912,Inicial,Brasil 453,Estatal,Jornada Simple (Hasta 20 hs. semanales),121,S/D,-35.04059402,-58.74145502,,110,N/C,,100,1.73553719
+Villa Adriana,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 18 (Ex- Extensión Nº 2140),Secundaria,"Estrada N° 739 Ruta Nº 205 Km. 57,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),108,S/D,-34.99796929,-58.68709254,25,32,,,87,1.333333333
+Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,E.P. N° 8 Martín Guemes,Primario,Ruta Nº 3 Km. 76.500,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),81,S/D,-35.14659435,-58.74158876,87,172,,,72,4.086419753
+Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 14 Juan Martín de Pueyrredón,Primario,"Urquiza S/N Ruta Nº 205 Km. 59,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),212,S/D,-35.01928306,-58.72169429,55,160,,,145,1.698113208
+Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 34 Héroes de Malvinas,Primario,Godoy Cruz N° 383,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),186,S/D,-35.04297395,-58.76913898,190,380,N/C,,185,4.059139785
+Barrio Arquitectura,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 909,Inicial,Tucumán N° 287,Estatal,Jornada Simple (Hasta 20 hs. semanales),223,S/D,-35.0629581,-58.75435172,,282,N/C,,180,2.071748879
+Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 10,Secundaria,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),185,S/D,-34.96401504,-58.65168389,,112,,,94,1.113513514
+Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,CENTRO EDUCATIVO PARA LA PRODUCCIÓN TOTAL Nº33,Secundaria,"ruta 6 km 75,500 2 km CAMINO REAL A MONTE S/N",Estatal,Completa/alternancia,101,S/D,-35.09091202,-58.59271988,38,0,38,,111,1.851485149
+Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 30 Juana Manso,Primario,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),131,S/D,-34.97890335,-58.67463043,,143,,,110,1.93129771
+Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08,Secundaria,Gral. José de San Martín N° 859,Estatal,Jornada Simple (Hasta 20 hs. semanales),117,S/D,-35.12518394,-58.89219093,,100,,,40,1.196581197
+Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 04,Secundaria,Godoy Cruz N° 383,Estatal,"Jornada Completa/Doble (40 hs. y mas semanales), Jornada Extendida (de 35 a 39 hs. semanales) y Jornada Simple (Hasta 20 hs. semanales),",155,S/D,-35.04297395,-58.76913898,96,160,N/C,,160,2.683870968
+Barrio Belgrano de Máximo Paz Oeste,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 15 (Ex Extensión 2060 ),Secundaria,"26 de Mayo S/N Rta. 3 Km. 43,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),167,S/D,-34.89859906,-58.64808505,35,108,,,150,1.754491018
+Gobernador Udaondo,CORREDOR UDAONDO,E.E.S. Nº 07,Secundaria,Ruta 16 y calle Panamá,Estatal,Jornada Simple (Hasta 20 hs. semanales),62,S/D,-35.29722736,-58.59289068,25,88,,,40,2.467741935
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 6 Vicente Pereda,Primario,San Eduardo 110,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),835,S/D,-34.94017435,-58.61424014,150,800,,30,687,1.996407186
+Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,"J. I. N° 903 ""CEFERINO NAMUNCURA""",Inicial,Ntra. Señora de Lujan entre Belgrano y Don Bosco,Estatal,Jornada Simple (Hasta 20 hs. semanales),61,S/D,-35.12487681,-58.89151233,81,81,,,65,3.721311475
+Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 24 Carlos Pellegrini,Primario,San Juan N° 2450,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),144,No,-35.0401147,-58.73737095,100,140,N/C,35,130,2.8125
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,ESCUELA DE EDUCACIÓN PRIMARIA N°35,Primario,BOUCHARD,Estatal,Jornada Simple (Hasta 20 hs. semanales),328,S/D,-34.92384509,-58.62280271,,350,,,312,2.018292683
+Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,J. I. N° 913,Inicial,Ruta Nº 3 Km. 76.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),30,S/D,-35.14746573,-58.7410863,,30,,,27,1.9
+Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 914,Inicial,Hilario Ascazubi N° 2025,Estatal,Jornada Simple (Hasta 20 hs. semanales),90,S/D,-35.04382288,-58.76881537,80,125,N/C,,97,3.355555556
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 916,Inicial,General Saá 2291,Estatal,Jornada Simple (Hasta 20 hs. semanales),161,S/D,-34.93910895,-58.60811376,,169,,,155,2.01242236
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 3 Carolina Caffaro de Peredo,Primario,Matheu N° 544 y Manuel Acuña,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),455,S/D,-35.05056514,-58.75320222,170,500,N/C,,400,2.351648352
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,"E.E.E. N° 501 MINISTRO OSVALDO ZARINI"" formación integral",Escuela Especial,Azcuénaga N° 581,Estatal,Jornada Simple (Hasta 29 Hs semanales),106,S/D,-35.05097309,-58.75465723,74,114,N/C,,58,2.320754717
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº3 JOSÉ MANUEL ESTRADA,Secundaria,Libertad Esquina Mozotegui,Estatal,Jornada Simple (Hasta 20 hs. semanales),301,S/D,-35.05127397,-58.76456369,,200,N/C,,80,0.9302325581
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.E. N° 502,Escuela Especial,Belgrano N° 436,Estatal,Jornada Simple (Hasta 29 Hs semanales),99,S/D,-34.93715428,-58.61800284,60,50,,,53,1.646464646
+Villa Adriana,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 31 Leopoldo Lugones,Primario,"Estrada N° 739 Ruta Nº 205 Km. 57,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),98,S/D,-34.99796929,-58.68709254,60,75,,,70,2.091836735
+Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.S. Nº 3 JOSÉ MANUEL ESTRADA,Secundaria,Mitre N° 1250 Esquina Mozotegui,Estatal,Jornada Simple (Hasta 20 hs. semanales),668,Si (Gestionado por alumnos),-35.05127397,-58.76456369,1,300,N/C,,143,0.6646706587
+Villa Vissir,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 23 Vicente López y Planes,Primario,Ayacucho S/N,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),59,S/D,-34.96202416,-58.69026076,59,118,JC,,35,3.593220339
+Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Primario,RUTA 205 KM 54.5 S/N,Privada,Jornada Simple (Hasta 20 hs. semanales),217,S/D,-34.98132349,-58.67915852,,,,,0,0
+Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Secundaria,RUTA 205 KM 54.5 S/N,Privada,Jornada Simple (Hasta 20 hs. semanales),207,S/D,-34.98132349,-58.67915852,,,,,0,0
+Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 4 José de San Martín,Primario,Gral. José de San Martín N° 859,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),171,S/D,-35.12518394,-58.89219093,180,306,,,138,3.649122807
+Barrio San Esteban,CORREDOR RUTA 3 CAMINO A CAPITAL,"E.P. Nº 33 ""EVA DUARTE""",Primario,"Ombú y Acacia S/N° Rta. 3 Km. 54,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),462,S/D,-34.96091196,-58.72753879,161,465,,,462,2.354978355
+Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 25 Alte. Guillermo Brown,Primario,Pueyrredón y Dupuy Rta. Nº 3 Km. 52.500,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),410,S/D,-34.93809816,-58.73126751,96,400,,,378,2.131707317
+Villa Vissir,CORREDOR RUTA 205 CAMINO A CAPITAL,JIRIMM N° 3,Inicial,Ayacucho S/N,Estatal,Jornada Simple (Hasta 20 hs. semanales),10,S/D,-34.96212968,-58.69038418,15,15,,,7,3.7
+Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 21 Patricias Argentinas,Primario,Segundo Sombra y Magallanes,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),108,S/D,-34.95102327,-58.75279071,90,170,,,100,3.333333333
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 1 Alfonsina Storni,Secundaria,Pereda y San Martìn,Estatal,Jornada Simple (Hasta 20 hs. semanales),867,S/D,-34.93966101,-58.61725242,,500,,,659,1.336793541
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 917,Inicial,Belgrano Nº 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),113,S/D,-34.9365881,-58.61841763,,128,,,110,2.10619469
+Barrio Los Álamos,RUTA 205 - CAMINO A LAS HERAS,E.P. N° 18 José Hernández,Primario,Cuartel 3º Camino Real a Las Heras,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),27,S/D,-35.01862123,-58.81051475,27,54,JC,,24,3.888888889
+Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 13,Secundaria,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),145,S/D,-34.97494405,-58.66646471,,120,,,135,1.75862069
+Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 901,Inicial,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),52,S/D,-34.96375438,-58.65170955,,68,,,60,2.461538462
+Gobernador Udaondo,CORREDOR UDAONDO,E.P. N° 9 Gabriela Mistral,Primario,Ruta 16 y calle Panamá,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),48,S/D,-35.29729324,-58.59289068,28,60,,,36,2.583333333
+Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,JIRIMM N° 1,Inicial,"Ruta Nº 6 Km. 82,500 Camino a La Plata",Estatal,Jornada Simple (Hasta 20 hs. semanales),2,S/D,-35.07775944,-58.65481628,,7,,,8,7.5
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 11,Secundaria,Rivadavia Nº 470,Estatal,Jornada Extendida (30 Hs semanales) Y Jornada Simple (Hasta 20 hs. semanales),310,S/D,-34.93882585,-58.61340567,174,257,,,248,2.190322581
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 918,Inicial,Bouchard y Cura Brochero S/N,Estatal,Jornada Simple (Hasta 20 hs. semanales),134,S/D,-34.92364071,-58.62234717,142,160,,,134,3.253731343
+Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,J. I. N° 915,Inicial,"Bicentenario S/N Ruta Nº 205 Km 75,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),16,S/D,-35.07244551,-58.86363315,24,24,,,20,4.25
+Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 904,Inicial,Av. Pereda 375 entre San Martin y Máximo Paz,Estatal,Jornada Simple (Hasta 20 hs. semanales),208,S/D,-34.93937845,-58.61769315,220,220,,,180,2.980769231
+Palmitas,CORREDOR UDAONDO,E.P. N° 5 Jorge Newbery,Primario,Rta. Pcial. N° 16,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),5,S/D,-35.21544015,-58.57164003,7,7,,,7,4.2
+</script>
 
-    // ---------------------------------------------------------------------------
-    // Constantes de configuración.
-    //
-    // Constante con la correspondencia entre las zonas del CSV y las zonas SAE del shapefile.
-    const SHAPE_ZONE_MAPPING = {
-      'CAMINO PANELO': 'PANELO',
-      'RUTA 205 - CAMINO A LAS HERAS': 'R205-LAS HERAS',
-      'CORREDOR UDAONDO': 'UDAONDO',
-      'CAÑUELAS CENTRO Y CASCO URBANO': 'C-URBANO',
-      'CORREDOR RUTA 205 CAMINO A CAPITAL': 'R205-CAP',
-      'CORREDOR RUTA 3 CAMINO A CAPITAL': 'R3-CAP',
-      'CORREDOR RUTA 205 - CAMINO A LOBOS': 'R205-LOBOS',
-      'CORREDOR RUTA 3 CAMINO A MONTE': 'R3-MONTE',
-      'RUTA 6 CAMINO A LA PLATA': 'R6-LA PLATA',
-    };
+<script>
+// --- CONFIGURACIÓN ---
+const zoneColors = {
+  "gestion": {
+    "R205-LAS HERAS": "#e6194b", "PANELO": "#3cb44b", "R3-MONTE": "#ffe119",
+    "UDAONDO": "#4363d8", "R6-LA PLATA": "#f58231", "R3-CAP": "#911eb4",
+    "R205-CAP": "#42d4f4", "R205-LOBOS": "#f032e6", "CENTRO URBANO": "#bcf60c",
+    "DESCONOCIDA": "#999999"
+  },
+  "iis": { "BAJO": "#fee2e2", "MEDIO": "#ef4444", "ALTO": "#7f1d1d" },
+  "cnp": { "BAJO": "#dcfce7", "MEDIO": "#22c55e", "ALTO": "#14532d" }
+};
 
-    // Paleta de colores fija asociada a las zonas SAE.
-    const SHAPE_ZONE_COLORS = {
-      'C-URBANO': '#1f77b4',        // azul
-      'R205-LOBOS': '#ff7f0e',      // naranja
-      'R205-CAP': '#2ca02c',        // verde
-      'R3-CAP': '#d62728',          // rojo
-      'R6-LA PLATA': '#9467bd',     // violeta
-      'UDAONDO': '#8c564b',         // marrón
-      'R3-MONTE': '#e377c2',        // rosa
-      'PANELO': '#7f7f7f',          // gris
-      'R205-LAS HERAS': '#bcbd22',  // oliva
-    };
+const zoneMapping = {
+    'CAMINO PANELO': 'PANELO',
+    'RUTA 205 - CAMINO A LAS HERAS': 'R205-LAS HERAS',
+    'CORREDOR UDAONDO': 'UDAONDO',
+    'CAÑUELAS CENTRO Y CASCO URBANO': 'CENTRO URBANO',
+    'CORREDOR RUTA 3 CAMINO A MONTE': 'R3-MONTE',
+    'RUTA 6 CAMINO A LA PLATA': 'R6-LA PLATA',
+    'CORREDOR RUTA 3 CAMINO A CAPITAL': 'R3-CAP',
+    'CORREDOR RUTA 205 - CAMINO A LOBOS': 'R205-LOBOS',
+    'CORREDOR RUTA 205 CAMINO A CAPITAL': 'R205-CAP'
+};
 
-    // ---------------------------------------------------------------------------
-    // Datos reales incrustados. Se cargan desde el CSV de 99 escuelas de Cañuelas.
-    const SAMPLE_DATA = [{"ZONA": "CAMINO PANELO", "ESCUELA": "E.P. N° 13 Paula Albarracín de Sarmiento", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 33, "LATITUD": -35.08303177, "LONGITUD": -58.78846377, "CUPOS COMEDOR": 33, "CUPOS DESAYUNO/MERIENDA": 66, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 27, "IIS": 3.8}, {"ZONA": "RUTA 205 - CAMINO A LAS HERAS", "ESCUELA": "JIRIMM N° 4", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 5, "LATITUD": -35.01862123, "LONGITUD": -58.81051475, "CUPOS COMEDOR": 7, "CUPOS DESAYUNO/MERIENDA": 7, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 7, "IIS": 4.2}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "J. I. N° 905", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 26, "LATITUD": -35.29708726, "LONGITUD": -58.59289068, "CUPOS COMEDOR": 30, "CUPOS DESAYUNO/MERIENDA": 20, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 17, "IIS": 2.6}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.E.S. Nº 02 Cnel. De Marina Leonardo Rosales", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 635, "LATITUD": -35.06236728, "LONGITUD": -58.75264325, "CUPOS COMEDOR": 60, "CUPOS DESAYUNO/MERIENDA": 300, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 306, "IIS": 1}, {"ZONA": "CAMINO PANELO", "ESCUELA": "JIRIMM N° 6 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 5, "LATITUD": -35.08303177, "LONGITUD": -58.78846377, "CUPOS COMEDOR": 7, "CUPOS DESAYUNO/MERIENDA": 5, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 4, "IIS": 3.2}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.P. N° 2 Tambor de Tacuarí", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 5, "LATITUD": -35.26434972, "LONGITUD": -58.67387492, "CUPOS COMEDOR": 6, "CUPOS DESAYUNO/MERIENDA": 6, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 6, "IIS": 3.6}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 11 Nuestra Sra. del Carmen", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Extendida (25 a 29 hs)", "TOTAL MATRICULA": 499, "LATITUD": -35.06240865, "LONGITUD": -58.75371417, "CUPOS COMEDOR": 40, "CUPOS DESAYUNO/MERIENDA": 430, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 466, "IIS": 1.9}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 906 \"LA CALEDONIA\"", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 78, "LATITUD": -35.01893004, "LONGITUD": -58.7215432, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 82, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 83, "IIS": 2.1}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.P. N° 7 Sargento Cabral", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 12, "LATITUD": -35.19199013, "LONGITUD": -58.64993129, "CUPOS COMEDOR": 16, "CUPOS DESAYUNO/MERIENDA": 14, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 16, "IIS": 3.8}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 919", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 140, "LATITUD": -35.05136428, "LONGITUD": -58.75413829, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 180, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 110, "IIS": 2.1}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 17 Vicente Casares", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 153, "LATITUD": -34.96405035, "LONGITUD": -58.6517067, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 124, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 109, "IIS": 1.5}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 902", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 201, "LATITUD": -35.04590565, "LONGITUD": -58.76306826, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 288, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 169, "IIS": 2.3}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 05", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 580, "LATITUD": -34.95374525, "LONGITUD": -58.73525537, "CUPOS COMEDOR": 98, "CUPOS DESAYUNO/MERIENDA": 300, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 454, "IIS": 1.5}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 14", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 149, "LATITUD": -35.01928306, "LONGITUD": -58.72169429, "CUPOS COMEDOR": 40, "CUPOS DESAYUNO/MERIENDA": 145, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 101, "IIS": 1.9}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 15 Hipólito Yrigoyen", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 177, "LATITUD": -35.04664009, "LONGITUD": -58.76182712, "CUPOS COMEDOR": 130, "CUPOS DESAYUNO/MERIENDA": 274, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": 22, "MÓDULO MESA": 132, "IIS": 3.2}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "E.E.S. Nº 08 ANEXO 1", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 57, "LATITUD": -35.07224814, "LONGITUD": -58.8637215, "CUPOS COMEDOR": 35, "CUPOS DESAYUNO/MERIENDA": 45, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 20, "IIS": 1.8}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 907", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 80, "LATITUD": -34.97890335, "LONGITUD": -58.67463043, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 90, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 73, "IIS": 2}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.P. N° 19 Bernardino Rivadavia", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 8, "LATITUD": -35.16567752, "LONGITUD": -58.78896305, "CUPOS COMEDOR": 9, "CUPOS DESAYUNO/MERIENDA": 9, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 8, "IIS": 3.3}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "E.P. N° 12 Remedios de Escalada de San Martín", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 55, "LATITUD": -35.07244551, "LONGITUD": -58.86363315, "CUPOS COMEDOR": 38, "CUPOS DESAYUNO/MERIENDA": 62, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 38, "IIS": 2.5}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "J.I. Nº 908", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 229, "LATITUD": -34.96063262, "LONGITUD": -58.72795605, "CUPOS COMEDOR": 224, "CUPOS DESAYUNO/MERIENDA": 224, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 194, "IIS": 2.8}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 16 Manuel Belgrano", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 219, "LATITUD": -34.95374525, "LONGITUD": -58.73525537, "CUPOS COMEDOR": 65, "CUPOS DESAYUNO/MERIENDA": 195, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 227, "IIS": 2.2}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 26 Mariano Moreno", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 199, "LATITUD": -34.89861613, "LONGITUD": -58.64804059, "CUPOS COMEDOR": 111, "CUPOS DESAYUNO/MERIENDA": 308, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": 34, "MÓDULO MESA": 202, "IIS": 3.3}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 27 Bartolomé Mitre", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 507, "LATITUD": -35.05884857, "LONGITUD": -58.75942572, "CUPOS COMEDOR": 13, "CUPOS DESAYUNO/MERIENDA": 450, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 255, "IIS": 1.4}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "INSTITUTO MODELO DE EDUCACION INTEGRAL", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 181, "LATITUD": -35.05084898, "LONGITUD": -58.76743844, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "INSTITUTO MODELO DE EDUCACION INTEGRAL", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 87, "LATITUD": -35.05084898, "LONGITUD": -58.76743844, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "INSTITUTO NUESTRA SEÑORA DE LUJAN", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 208, "LATITUD": -34.9400768, "LONGITUD": -58.61392138, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "INSTITUTO NUESTRA SEÑORA DE LUJÁN", "NIVEL": "Inicial", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 267, "LATITUD": -34.9400118, "LONGITUD": -58.61388948, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "INSTITUTO NUESTRA SEÑORA DE LUJÁN", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 206, "LATITUD": -34.94003562, "LONGITUD": -58.61381526, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "COLEGIO SANTA MARIA", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 936, "LATITUD": -35.05864217, "LONGITUD": -58.74807558, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "COLEGIO SECUNDARIO SANTA MARIA", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 736, "LATITUD": -35.05475463, "LONGITUD": -58.7617634, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "JARDÍN DE INFANTES LA SAGRADA FAMILIA", "NIVEL": "Inicial", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 327, "LATITUD": -35.05807919, "LONGITUD": -58.75999575, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "COLEGIO LAS CAÑUELAS", "NIVEL": "Inicial", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 82, "LATITUD": -35.03721646, "LONGITUD": -58.74341626, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "COLEGIO LAS CAÑUELAS", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Extendida (de 21 a 24 hs. semanales)", "TOTAL MATRICULA": 182, "LATITUD": -35.03698613, "LONGITUD": -58.74329155, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "COLEGIO LAS CAÑUELAS", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Extendida (30 Hs semanales)", "TOTAL MATRICULA": 179, "LATITUD": -35.03698613, "LONGITUD": -58.74329155, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "CENTRO EDUCATIVO EL JACARANDA", "NIVEL": "Inicial", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 59, "LATITUD": -35.05744769, "LONGITUD": -58.7596404, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "CENTRO EDUCATIVO EL JACARANDA", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 59, "LATITUD": -35.05744769, "LONGITUD": -58.7596404, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "CENTRO EDUCATIVO EL JACARANDA", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 0, "LATITUD": -35.05744769, "LONGITUD": -58.7596404, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": null}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "E.A.S DON BOSCO", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Extendida", "TOTAL MATRICULA": 410, "LATITUD": -35.1330864, "LONGITUD": -58.87657567, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.S.T. Nº 1 Cnel. Manuel Dorrego", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 35 a 39 hs. semanales), Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 1081, "LATITUD": -35.05872514, "LONGITUD": -58.76063681, "CUPOS COMEDOR": 100, "CUPOS DESAYUNO/MERIENDA": 750, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 444, "IIS": 1.2}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 1 Domingo F. Sarmiento", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Extendida (25 a 28 hs semanales)", "TOTAL MATRICULA": 537, "LATITUD": -35.05439887, "LONGITUD": -58.7618878, "CUPOS COMEDOR": 7, "CUPOS DESAYUNO/MERIENDA": 475, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 375, "IIS": 1.6}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.E.S. Nº 09", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 529, "LATITUD": -35.05069273, "LONGITUD": -58.75328858, "CUPOS COMEDOR": 45, "CUPOS DESAYUNO/MERIENDA": 250, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 281, "IIS": 1.1}, {"ZONA": "CORREDOR RUTA 3 CAMINO A MONTE", "ESCUELA": "E.E.S. Nº 16 (Ex - Extensión 3031)", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 72, "LATITUD": -35.1465727, "LONGITUD": -58.74148636, "CUPOS COMEDOR": 37, "CUPOS DESAYUNO/MERIENDA": 80, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 65, "IIS": 2.5}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 20 Malvinas Argentinas", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 224, "LATITUD": -34.94557904, "LONGITUD": -58.62415353, "CUPOS COMEDOR": 100, "CUPOS DESAYUNO/MERIENDA": 230, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 190, "IIS": 2.3}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "JIRIMM N° 5 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 3, "LATITUD": -35.19235773, "LONGITUD": -58.64995977, "CUPOS COMEDOR": 2, "CUPOS DESAYUNO/MERIENDA": 2, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 2, "IIS": 2}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 911 \"EL PEQUEÑO DE ASIS\"", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 128, "LATITUD": -35.04951501, "LONGITUD": -58.76355394, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 155, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 86, "IIS": 1.9}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 28 Clotilde Guillén de Rezzano", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 448, "LATITUD": -34.9388936, "LONGITUD": -58.60916797, "CUPOS COMEDOR": 458, "CUPOS DESAYUNO/MERIENDA": 968, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 389, "IIS": 4.1}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 06", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 399, "LATITUD": -34.93809816, "LONGITUD": -58.73126751, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 287, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 233, "IIS": 1.3}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 32 José Manuel Estrada", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 21 a 24 hs. semanales)", "TOTAL MATRICULA": 300, "LATITUD": -35.0551473, "LONGITUD": -58.75782247, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 300, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 99, "IIS": 1.3}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.E.S. Nº 12 \"JULIO CAO, HÉROE DE MALVINAS\"", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 168, "LATITUD": -35.04010823, "LONGITUD": -58.73756626, "CUPOS COMEDOR": 35, "CUPOS DESAYUNO/MERIENDA": 50, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 80, "IIS": 1}, {"ZONA": "RUTA 6 CAMINO A LA PLATA", "ESCUELA": "E.P. N° 29 Antártida Argentina", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 23, "LATITUD": -35.07762311, "LONGITUD": -58.65486957, "CUPOS COMEDOR": 24, "CUPOS DESAYUNO/MERIENDA": 48, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 19, "IIS": 4}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 910", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 141, "LATITUD": -34.89856895, "LONGITUD": -58.64797376, "CUPOS COMEDOR": 62, "CUPOS DESAYUNO/MERIENDA": 151, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 150, "IIS": 2.6}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "EXTENSION I DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº12", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 80, "LATITUD": -35.04664009, "LONGITUD": -58.76182712, "CUPOS COMEDOR": 22, "CUPOS DESAYUNO/MERIENDA": 35, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 45, "IIS": 1.3}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 17 (Ex- Extension N° 2100)", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 247, "LATITUD": -34.94557904, "LONGITUD": -58.62415353, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 139, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 154, "IIS": 1.2}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 912", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 121, "LATITUD": -35.04059402, "LONGITUD": -58.74145502, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 110, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 100, "IIS": 1.7}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 18 (Ex- Extensión Nº 2140)", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 108, "LATITUD": -34.99796929, "LONGITUD": -58.68709254, "CUPOS COMEDOR": 25, "CUPOS DESAYUNO/MERIENDA": 32, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 87, "IIS": 1.3}, {"ZONA": "CORREDOR RUTA 3 CAMINO A MONTE", "ESCUELA": "E.P. N° 8 Martín Guemes", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 81, "LATITUD": -35.14659435, "LONGITUD": -58.74158876, "CUPOS COMEDOR": 87, "CUPOS DESAYUNO/MERIENDA": 172, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 72, "IIS": 4.1}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 14 Juan Martín de Pueyrredón", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 212, "LATITUD": -35.01928306, "LONGITUD": -58.72169429, "CUPOS COMEDOR": 55, "CUPOS DESAYUNO/MERIENDA": 160, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 145, "IIS": 1.7}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 34 Héroes de Malvinas", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 186, "LATITUD": -35.04297395, "LONGITUD": -58.76913898, "CUPOS COMEDOR": 190, "CUPOS DESAYUNO/MERIENDA": 380, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 185, "IIS": 4.1}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 909", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 223, "LATITUD": -35.0629581, "LONGITUD": -58.75435172, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 282, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 180, "IIS": 2.1}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 10", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 185, "LATITUD": -34.96401504, "LONGITUD": -58.65168389, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 112, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 94, "IIS": 1.1}, {"ZONA": "RUTA 6 CAMINO A LA PLATA", "ESCUELA": "CENTRO EDUCATIVO PARA LA PRODUCCIÓN TOTAL Nº33", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Completa/alternancia", "TOTAL MATRICULA": 101, "LATITUD": -35.09091202, "LONGITUD": -58.59271988, "CUPOS COMEDOR": 38, "CUPOS DESAYUNO/MERIENDA": 0, "CUPOS ALBERGUE": 38, "PATIOS ABIERTOS": null, "MÓDULO MESA": 111, "IIS": 1.9}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 30 Juana Manso", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 131, "LATITUD": -34.97890335, "LONGITUD": -58.67463043, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 143, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 110, "IIS": 1.9}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "E.E.S. Nº 08", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 117, "LATITUD": -35.12518394, "LONGITUD": -58.89219093, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 100, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 40, "IIS": 1.2}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.E.S. Nº 04", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales), Jornada Extendida (de 35 a 39 hs. semanales) y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 155, "LATITUD": -35.04297395, "LONGITUD": -58.76913898, "CUPOS COMEDOR": 96, "CUPOS DESAYUNO/MERIENDA": 160, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 160, "IIS": 2.7}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 15 (Ex Extensión 2060 )", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 167, "LATITUD": -34.89859906, "LONGITUD": -58.64808505, "CUPOS COMEDOR": 35, "CUPOS DESAYUNO/MERIENDA": 108, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 150, "IIS": 1.8}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.E.S. Nº 07", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 62, "LATITUD": -35.29722736, "LONGITUD": -58.59289068, "CUPOS COMEDOR": 25, "CUPOS DESAYUNO/MERIENDA": 88, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 40, "IIS": 2.5}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 6 Vicente Pereda", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 835, "LATITUD": -34.94017435, "LONGITUD": -58.61424014, "CUPOS COMEDOR": 150, "CUPOS DESAYUNO/MERIENDA": 800, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": 30, "MÓDULO MESA": 687, "IIS": 2}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "J. I. N° 903 \"CEFERINO NAMUNCURA\"", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 61, "LATITUD": -35.12487681, "LONGITUD": -58.89151233, "CUPOS COMEDOR": 81, "CUPOS DESAYUNO/MERIENDA": 81, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 65, "IIS": 3.7}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 24 Carlos Pellegrini", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 144, "LATITUD": -35.0401147, "LONGITUD": -58.73737095, "CUPOS COMEDOR": 100, "CUPOS DESAYUNO/MERIENDA": 140, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": 35, "MÓDULO MESA": 130, "IIS": 2.8}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "ESCUELA DE EDUCACIÓN PRIMARIA N°35", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 328, "LATITUD": -34.92384509, "LONGITUD": -58.62280271, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 350, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 312, "IIS": 2}, {"ZONA": "CORREDOR RUTA 3 CAMINO A MONTE", "ESCUELA": "J. I. N° 913", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 30, "LATITUD": -35.14746573, "LONGITUD": -58.7410863, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 30, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 27, "IIS": 1.9}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "J. I. N° 914", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 90, "LATITUD": -35.04382288, "LONGITUD": -58.76881537, "CUPOS COMEDOR": 80, "CUPOS DESAYUNO/MERIENDA": 125, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 97, "IIS": 3.4}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. Nº 916", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 161, "LATITUD": -34.93910895, "LONGITUD": -58.60811376, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 169, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 155, "IIS": 2}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.P. N° 3 Carolina Caffaro de Peredo", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 455, "LATITUD": -35.05056514, "LONGITUD": -58.75320222, "CUPOS COMEDOR": 170, "CUPOS DESAYUNO/MERIENDA": 500, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 400, "IIS": 2.4}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.E.E. N° 501 MINISTRO OSVALDO ZARINI\" formación integral", "NIVEL": "Escuela Especial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 29 Hs semanales)", "TOTAL MATRICULA": 106, "LATITUD": -35.05097309, "LONGITUD": -58.75465723, "CUPOS COMEDOR": 74, "CUPOS DESAYUNO/MERIENDA": 114, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 58, "IIS": 2.3}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "EXTENSION DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº3 JOSÉ MANUEL ESTRADA", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 301, "LATITUD": -35.05127397, "LONGITUD": -58.76456369, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 200, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 80, "IIS": 0.9}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.E. N° 502", "NIVEL": "Escuela Especial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 29 Hs semanales)", "TOTAL MATRICULA": 99, "LATITUD": -34.93715428, "LONGITUD": -58.61800284, "CUPOS COMEDOR": 60, "CUPOS DESAYUNO/MERIENDA": 50, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 53, "IIS": 1.6}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 31 Leopoldo Lugones", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 98, "LATITUD": -34.99796929, "LONGITUD": -58.68709254, "CUPOS COMEDOR": 60, "CUPOS DESAYUNO/MERIENDA": 75, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 70, "IIS": 2.1}, {"ZONA": "CAÑUELAS CENTRO Y CASCO URBANO", "ESCUELA": "E.S. Nº 3 JOSÉ MANUEL ESTRADA", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 668, "LATITUD": -35.05127397, "LONGITUD": -58.76456369, "CUPOS COMEDOR": 1, "CUPOS DESAYUNO/MERIENDA": 300, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 143, "IIS": 0.7}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 23 Vicente López y Planes", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 59, "LATITUD": -34.96202416, "LONGITUD": -58.69026076, "CUPOS COMEDOR": 59, "CUPOS DESAYUNO/MERIENDA": 118, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 35, "IIS": 3.6}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "LOS SILOS", "NIVEL": "Primario", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 217, "LATITUD": -34.98132349, "LONGITUD": -58.67915852, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "LOS SILOS", "NIVEL": "Secundaria", "SECTOR": "Privada", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 207, "LATITUD": -34.98132349, "LONGITUD": -58.67915852, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": null, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 0, "IIS": 0}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "E.P. N° 4 José de San Martín", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 171, "LATITUD": -35.12518394, "LONGITUD": -58.89219093, "CUPOS COMEDOR": 180, "CUPOS DESAYUNO/MERIENDA": 306, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 138, "IIS": 3.6}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.P. Nº 33 \"EVA DUARTE\"", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 462, "LATITUD": -34.96091196, "LONGITUD": -58.72753879, "CUPOS COMEDOR": 161, "CUPOS DESAYUNO/MERIENDA": 465, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 462, "IIS": 2.4}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 25 Alte. Guillermo Brown", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 410, "LATITUD": -34.93809816, "LONGITUD": -58.73126751, "CUPOS COMEDOR": 96, "CUPOS DESAYUNO/MERIENDA": 400, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 378, "IIS": 2.1}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "JIRIMM N° 3", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 10, "LATITUD": -34.96212968, "LONGITUD": -58.69038418, "CUPOS COMEDOR": 15, "CUPOS DESAYUNO/MERIENDA": 15, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 7, "IIS": 3.7}, {"ZONA": "CORREDOR RUTA 3 CAMINO A CAPITAL", "ESCUELA": "E.P. N° 21 Patricias Argentinas", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 108, "LATITUD": -34.95102327, "LONGITUD": -58.75279071, "CUPOS COMEDOR": 90, "CUPOS DESAYUNO/MERIENDA": 170, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 100, "IIS": 3.3}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.S. Nº 1 Alfonsina Storni", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 867, "LATITUD": -34.93966101, "LONGITUD": -58.61725242, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 500, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 659, "IIS": 1.3}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. Nº 917", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 113, "LATITUD": -34.9365881, "LONGITUD": -58.61841763, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 128, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 110, "IIS": 2.1}, {"ZONA": "RUTA 205 - CAMINO A LAS HERAS", "ESCUELA": "E.P. N° 18 José Hernández", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Completa/Doble (40 hs. y mas semanales)", "TOTAL MATRICULA": 27, "LATITUD": -35.01862123, "LONGITUD": -58.81051475, "CUPOS COMEDOR": 27, "CUPOS DESAYUNO/MERIENDA": 54, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 24, "IIS": 3.9}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.S. Nº 13", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 145, "LATITUD": -34.97494405, "LONGITUD": -58.66646471, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 120, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 135, "IIS": 1.8}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 901", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 52, "LATITUD": -34.96375438, "LONGITUD": -58.65170955, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 68, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 60, "IIS": 2.5}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.P. N° 9 Gabriela Mistral", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 48, "LATITUD": -35.29729324, "LONGITUD": -58.59289068, "CUPOS COMEDOR": 28, "CUPOS DESAYUNO/MERIENDA": 60, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 36, "IIS": 2.6}, {"ZONA": "RUTA 6 CAMINO A LA PLATA", "ESCUELA": "JIRIMM N° 1", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 2, "LATITUD": -35.07775944, "LONGITUD": -58.65481628, "CUPOS COMEDOR": null, "CUPOS DESAYUNO/MERIENDA": 7, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 8, "IIS": 7.5}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "E.E.S. Nº 11", "NIVEL": "Secundaria", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (30 Hs semanales) Y Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 310, "LATITUD": -34.93882585, "LONGITUD": -58.61340567, "CUPOS COMEDOR": 174, "CUPOS DESAYUNO/MERIENDA": 257, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 248, "IIS": 2.2}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 918", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 134, "LATITUD": -34.92364071, "LONGITUD": -58.62234717, "CUPOS COMEDOR": 142, "CUPOS DESAYUNO/MERIENDA": 160, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 134, "IIS": 3.3}, {"ZONA": "CORREDOR RUTA 205 - CAMINO A LOBOS", "ESCUELA": "J. I. N° 915", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 16, "LATITUD": -35.07244551, "LONGITUD": -58.86363315, "CUPOS COMEDOR": 24, "CUPOS DESAYUNO/MERIENDA": 24, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 20, "IIS": 4.3}, {"ZONA": "CORREDOR RUTA 205 CAMINO A CAPITAL", "ESCUELA": "J. I. N° 904", "NIVEL": "Inicial", "SECTOR": "Estatal", "JORNADA": "Jornada Simple (Hasta 20 hs. semanales)", "TOTAL MATRICULA": 208, "LATITUD": -34.93937845, "LONGITUD": -58.61769315, "CUPOS COMEDOR": 220, "CUPOS DESAYUNO/MERIENDA": 220, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 180, "IIS": 3}, {"ZONA": "CORREDOR UDAONDO", "ESCUELA": "E.P. N° 5 Jorge Newbery", "NIVEL": "Primario", "SECTOR": "Estatal", "JORNADA": "Jornada Extendida (de 25 a 29 hs. semanales)", "TOTAL MATRICULA": 5, "LATITUD": -35.21544015, "LONGITUD": -58.57164003, "CUPOS COMEDOR": 7, "CUPOS DESAYUNO/MERIENDA": 7, "CUPOS ALBERGUE": null, "PATIOS ABIERTOS": null, "MÓDULO MESA": 7, "IIS": 4.2}];
+// --- POLÍGONOS DE ZONAS (ESTÁTICOS) ---
+const zonesData = {"type": "FeatureCollection", "features": [
+  {"type": "Feature", "properties": {"name": "CENTRO URBANO"}, "geometry": {"type": "Polygon", "coordinates": [[[-58.79299207065791, -35.053234089318494], [-58.784732001111195, -35.046140147237196], [-58.78307998720186, -35.04779216114654], [-58.76976669863833, -35.036713950225064], [-58.763158643000956, -35.04176716924188], [-58.74479213542062, -35.026121625747514], [-58.734977229253346, -35.03321556782881], [-58.73361674721036, -35.03224379494096], [-58.731478846857094, -35.03962926888861], [-58.72807764174962, -35.04235023297459], [-58.73050707396924, -35.044099424172714], [-58.722247004422535, -35.050707479810086], [-58.74605544017482, -35.07033729214463], [-58.75120583648042, -35.06654737788202], [-58.75664776465237, -35.07130906503248], [-58.76558807522058, -35.064798186683895], [-58.7724876627243, -35.06936551925678], [-58.79299207065791, -35.053234089318494]]]}}, 
+  {"type": "Feature", "properties": {"name": "R205-LAS HERAS"}, "geometry": {"type": "Polygon", "coordinates": [[[-58.79848866105475, -34.9830720868158], [-58.744652443067935, -35.02641315761385], [-58.76311612793706, -35.040795396354014], [-58.77030724730714, -35.03632524106991], [-58.78313464942674, -35.04779216114654], [-58.78566125893515, -35.04545990621568], [-58.79790559732204, -35.0549832805166], [-58.8418297318528, -35.02155429317461], [-58.79848866105475, -34.9830720868158]]]}}, 
+  {"type": "Feature", "properties": {"name": "R205-LOBOS"}, "geometry": {"type": "Polygon", "coordinates": [[[-58.934148156198404, -35.10396063406416], [-58.84085795896494, -35.02272042064002], [-58.79926607936502, -35.05459457136145], [-58.79226931457251, -35.05342844389603], [-58.77361127512581, -35.06897681010161], [-58.88555951180597, -35.10707030730528], [-58.85174181530884, -35.13738962140616], [-58.86845630897984, -35.153715405922014], [-58.934148156198404, -35.10396063406416]]]}}, 
+  {"type": "Feature", "properties": {"name": "R3-MONTE"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[-58.784856509512316, -35.13247913153222], [-58.77567325572215, -35.07252074435196], [-58.7721262846815, -35.06960542568842], [-58.765518229044126, -35.06479514989357], [-58.75686945034228, -35.07145179417533], [-58.75118457894836, -35.0664957524473], [-58.74637430315351, -35.07062578722066], [-58.74559688484323, -35.07004272348795], [-58.72693884539654, -35.08350177798465], [-58.74559688484323, -35.25414509709087], [-58.76814201584132, -35.27591280977868], [-58.811677441216936, -35.244038659057246], [-58.807790349665545, -35.23937414919557], [-58.894083782106506, -35.176014556907845], [-58.814787114458056, -35.107990454758436], [-58.784856509512316, -35.13247913153222]]]]}}, 
+  {"type": "Feature", "properties": {"name": "UDAONDO"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[-58.72693884539652, -35.08481367138325], [-58.62286196910793, -35.16343009801019], [-58.57660557964633, -35.12961240151306], [-58.575828161336055, -35.148659150114895], [-58.549395938786574, -35.16576235294103], [-58.557170121889364, -35.172370408578395], [-58.53812337328753, -35.19219457549051], [-58.533847572580996, -35.18830748393911], [-58.46854443451757, -35.23806225579697], [-58.571941069784664, -35.32863148894446], [-58.52374113454737, -35.36594756783784], [-58.541621755683785, -35.380329806578004], [-58.54084433737349, -35.384314075418175], [-58.58214468510706, -35.42172733160035], [-58.66348207581998, -35.35516088878272], [-58.6742687548751, -35.36050563966589], [-58.70750338763951, -35.334850835426685], [-58.69739694960589, -35.32532746112577], [-58.69885460893766, -35.323966979082776], [-58.67912761931433, -35.30608635794636], [-58.745694062131975, -35.25565134506702], [-58.72693884539652, -35.08481367138325]]]]}}, 
+  {"type": "Feature", "properties": {"name": "R205-CAP"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[-58.74705454417497, -35.02330044758243], [-58.69146913499003, -34.971213420793745], [-58.695939290274126, -34.96266181938068], [-58.68952558921432, -34.95430457254518], [-58.63471759833966, -34.911546565479846], [-58.62752647896958, -34.91912639400506], [-58.61780875009109, -34.9214586489359], [-58.59895635606683, -34.94361507077885], [-58.619169232134084, -34.96110698276012], [-58.55308867576038, -35.009889981730126], [-58.599345065221975, -35.04895525182164], [-58.58010396204258, -35.06547539091507], [-58.65007160996768, -35.07713666556925], [-58.701575573023646, -35.03224075815064], [-58.723148931133885, -35.050510088442195], [-58.72995134134883, -35.04370767822726], [-58.74705454417497, -35.02330044758243]]]]}}, 
+  {"type": "Feature", "properties": {"name": "R6-LA PLATA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[-58.744333580089005, -35.068973773311306], [-58.70196428217881, -35.03262946730577], [-58.65026596454526, -35.077525374724374], [-58.58301928070613, -35.06566974549262], [-58.57835477084446, -35.06508668175991], [-58.577382997956605, -35.12961240151306], [-58.62325067826305, -35.16284703427748], [-58.74452793466654, -35.07052860993186], [-58.744333580089005, -35.068973773311306]]]]}}, 
+  {"type": "Feature", "properties": {"name": "PANELO"}, "geometry": {"type": "Polygon", "coordinates": [[[-58.77263950223798, -35.06994858298946], [-58.77574917547909, -35.07247519249786], [-58.78527254978001, -35.13078156576878], [-58.817146700501446, -35.10784772561555], [-58.85096439699858, -35.13661220309587], [-58.88478209349571, -35.10707030730527], [-58.77263950223798, -35.06994858298946]]]}}, 
+  {"type": "Feature", "properties": {"name": "R3-CAP"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[-58.79816979807579, -34.98268034087036], [-58.777568212853396, -34.96441101057881], [-58.78417626849077, -34.95974650071714], [-58.79195045159356, -34.95333279965734], [-58.76512951988894, -34.956442472898445], [-58.71809571211706, -34.91698849365179], [-58.64890548250224, -34.89016756194717], [-58.63607808038264, -34.91115785632471], [-58.69555058111897, -34.961301337337694], [-58.69166348956758, -34.970436002483474], [-58.74958115368336, -35.02310609300486], [-58.79816979807579, -34.98268034087036]]]]}}
+]};
 
-    // Utility: map raw CSV rows (with varying column names) into a normalized structure
-    const KEYMAP = {
-      ZONA: ['ZONA', 'Zona', 'zona'],
-      NIVEL: ['NIVEL', 'Nivel', 'nivel'],
-      LATITUD: ['LATITUD', 'Latitud', 'latitud', 'LAT', 'lat'],
-      LONGITUD: ['LONGITUD', 'Longitud', 'longitud', 'LON', 'Lon', 'long'],
-      ESCUELA: ['ESCUELA', 'Escuela', 'escuela', 'NOMBRE', 'Nombre'],
-      TOTAL_MATRICULA: [
-        'TOTAL MATRICULA',
-        'TOTAL_MATRICULA',
-        'Matricula',
-        'MATRICULA',
-        'Total_Matricula',
-      ],
-      CUPOS_COMEDOR: [
-        'CUPOS COMEDOR',
-        'CUPOS_COMEDOR',
-        'Cupos Comedor',
-        'COMEDOR',
-      ],
-      CUPOS_DM: [
-        'CUPOS DESAYUNO/MERIENDA',
-        'CUPOS DM',
-        'Desayuno/Merienda',
-        'DM',
-      ],
-      MODULO_MESA: ['MODULO MESA', 'MÓDULO MESA', 'Modulo Mesa', 'modulo MESA', 'MESA'],
-      CUPOS_ALBERGUE: ['CUPOS ALBERGUE', 'Albergue', 'ALBERGUE', 'CUPOS_ALBERGUE'],
-      PATIOS_ABIERTOS: [
-        'PATIOS ABIERTOS',
-        'Patios abiertos',
-        'PATIOS',
-        'Patios',
-      ],
-    };
+// --- INIT MAPA ---
+const map = L.map('map', {zoomControl: false}).setView([-35.05, -58.75], 11);
+L.control.zoom({position: 'topleft'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM contributors', maxZoom: 19 }).addTo(map);
 
-    // Helper to pick first existing property from candidate keys
-    function pick(obj, keys) {
-      for (const k of keys) {
-        if (k in obj && obj[k] !== undefined && obj[k] !== null && obj[k] !== '') {
-          return obj[k];
-        }
-      }
-      return undefined;
+// LÍMITE AUTOMÁTICO (BUFFER + UNION)
+try {
+    let unionPoly = turf.buffer(zonesData.features[0], 0.3, {units: 'kilometers'}); 
+    for(let i=1; i<zonesData.features.length; i++){
+        let bufferedZone = turf.buffer(zonesData.features[i], 0.3, {units: 'kilometers'});
+        unionPoly = turf.union(unionPoly, bufferedZone);
     }
+    unionPoly = turf.simplify(unionPoly, {tolerance: 0.005, highQuality: true});
+    L.geoJSON(unionPoly, {
+        style: { color: '#1e293b', weight: 4, fill: false, opacity: 0.9, lineCap: 'round', lineJoin: 'round' },
+        interactive: false
+    }).addTo(map);
+} catch (e) { console.error(e); }
 
-    function normalizeRow(row) {
-      const out = {};
-      out.ZONA = pick(row, KEYMAP.ZONA) ?? '';
-      out.NIVEL = pick(row, KEYMAP.NIVEL) ?? '';
-      out.ESCUELA = pick(row, KEYMAP.ESCUELA) ?? '';
-      out['TOTAL MATRICULA'] = Number(pick(row, KEYMAP.TOTAL_MATRICULA) ?? 0) || 0;
-      out['CUPOS COMEDOR'] = Number(pick(row, KEYMAP.CUPOS_COMEDOR) ?? 0) || 0;
-      out['CUPOS DESAYUNO/MERIENDA'] = Number(pick(row, KEYMAP.CUPOS_DM) ?? 0) || 0;
-      out['MODULO MESA'] = Number(pick(row, KEYMAP.MODULO_MESA) ?? 0) || 0;
-      // Cupos albergue might be a number or string (e.g. 'JC'); if numeric convert, else keep
-      const albergue = pick(row, KEYMAP.CUPOS_ALBERGUE);
-      out['CUPOS ALBERGUE'] = albergue === undefined || albergue === ''
-        ? 0
-        : isNaN(Number(albergue))
-        ? albergue
-        : Number(albergue);
-      const patios = pick(row, KEYMAP.PATIOS_ABIERTOS);
-      out['PATIOS ABIERTOS'] = patios === undefined || patios === '' ? null : patios;
-      const lat = Number(pick(row, KEYMAP.LATITUD));
-      const lon = Number(pick(row, KEYMAP.LONGITUD));
-      out.LATITUD = Number.isFinite(lat) ? lat : NaN;
-      out.LONGITUD = Number.isFinite(lon) ? lon : NaN;
-      // Convertir el nombre de zona del CSV en la zona SAE del shapefile si existe la correspondencia
-      const mapped = SHAPE_ZONE_MAPPING[out.ZONA] || out.ZONA;
-      out.SHAPE_ZONE = mapped;
-      return out;
+// DOWNLOAD BTN
+L.Control.DownloadMap = L.Control.extend({
+    onAdd: function(map) {
+        var btn = L.DomUtil.create('div', 'leaflet-control-download leaflet-bar');
+        btn.innerHTML = '📷';
+        btn.onclick = function(e) { e.stopPropagation(); downloadElement('map', 'SAE_Mapa'); };
+        return btn;
     }
+});
+new L.Control.DownloadMap({ position: 'topleft' }).addTo(map);
 
-    // Normalize entire dataset
-    function prepareData(rows) {
-      return rows.map(normalizeRow);
-    }
+// --- PROCESAMIENTO CSV A GEOJSON ---
+let schoolsData = { "type": "FeatureCollection", "features": [] };
 
-    // Generate a categorical palette for additional zones not present in SHAPE_ZONE_COLORS; cycles colours if more than base length
-    function generatePalette(zones) {
-      const base = [
-        '#1f77b4',
-        '#ff7f0e',
-        '#2ca02c',
-        '#d62728',
-        '#9467bd',
-        '#8c564b',
-        '#e377c2',
-        '#7f7f7f',
-        '#bcbd22',
-        '#17becf',
-      ];
-      const out = {};
-      zones.forEach((z, i) => {
-        out[z] = base[i % base.length];
-      });
-      return out;
-    }
+function parseCSVAndLoad() {
+    const csvText = document.getElementById('csv-data').innerText.trim();
+    // Regex para splitear CSV respetando comillas
+    const lines = csvText.split('\n');
+    const headers = lines[0].split(','); // Asumimos headers simples
+    
+    // Mapeo de indices
+    const idx = {};
+    headers.forEach((h, i) => idx[h.trim()] = i);
 
-    // Determine the coverage category for a given record and selected type.
-    // Returns one of 'sin', 'baja', 'media', 'alta' or null if type invalid.
-    function getCoverageCategory(row, type) {
-      let cupos = 0;
-      switch (type) {
-        case 'comedor':
-          cupos = row['CUPOS COMEDOR'];
-          break;
-        case 'dm':
-          cupos = row['CUPOS DESAYUNO/MERIENDA'];
-          break;
-        case 'mesa':
-          cupos = row['MODULO MESA'];
-          break;
-        case 'albergue':
-          cupos = row['CUPOS ALBERGUE'];
-          break;
-        default:
-          return null;
-      }
-      // Some albergue values might be strings (e.g., 'JC'). Convert to numeric if possible
-      if (typeof cupos !== 'number') {
-        const num = Number(cupos);
-        cupos = isNaN(num) ? 0 : num;
-      }
-      const total = row['TOTAL MATRICULA'] || 0;
-      const ratio = total > 0 ? cupos / total : 0;
-      if (cupos === 0 || ratio === 0) return 'sin';
-      if (ratio <= 0.5) return 'baja';
-      if (ratio < 1) return 'media';
-      return 'alta';
-    }
+    // Parseo línea a línea (saltando header)
+    for(let i=1; i<lines.length; i++) {
+        // Simple split por coma (ojo: fallará si hay comas dentro de nombres, pero el CSV parece limpio o usaremos regex)
+        // Regex robusto para CSV:
+        const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
+        // Ajuste simple: usar split y limpiar comillas si es básico
+        // Dado el formato visto, un split por coma es arriesgado para "J. I. ...".
+        // Usaremos una funcion helper.
+        const row = parseCSVLine(lines[i]);
+        
+        if(row.length < 5) continue;
 
-    // Radius scaling based on matricula
-    function getRadius(val, raw) {
-      const vals = raw.map((d) => d['TOTAL MATRICULA']).filter((v) => v > 0);
-      if (!vals.length) return 6;
-      const min = Math.min(...vals);
-      const max = Math.max(...vals);
-      const s =
-        (Math.sqrt(val) - Math.sqrt(min)) / (Math.sqrt(max) - Math.sqrt(min) || 1);
-      return 4 + 16 * Math.max(0, Math.min(1, s));
-    }
+        const zonaRaw = row[idx['ZONA']] || '';
+        const zoneName = zoneMapping[zonaRaw] || 'DESCONOCIDA';
+        
+        const lat = parseFloat(row[idx['LATITUD']]);
+        const lng = parseFloat(row[idx['LONGITUD']]);
+        
+        if(isNaN(lat) || isNaN(lng)) continue;
 
-    // Number formatter for metrics
-    function fmt(n) {
-      return Number(n || 0).toLocaleString('es-AR');
-    }
+        const matricula = parseInt(row[idx['TOTAL MATRICULA']]) || 0;
+        const cupoCom = parseInt(row[idx['CUPOS COMEDOR']]) || 0;
+        const cupoDMC = parseInt(row[idx['CUPOS DESAYUNO/MERIENDA']]) || 0;
+        const cupoMesa = parseInt(row[idx['modulo MESA']]) || 0;
+        const iis = parseFloat(row[idx['IIS']]) || 0;
+        
+        // Calculo CNP si no existe (Cobertura prestacional)
+        let cnp = 0;
+        if(matricula > 0) cnp = ((cupoCom + cupoDMC) / matricula) * 100;
 
-    // Global state
-    let RAW = [];
-    let ZONES = [];
-    let LEVELS = [];
-    let PALETTE = {};
-    let map,
-      markersLayer,
-      heatLayer,
-      selectedMarker = null,
-      chartZona = null,
-      chartNivel = null,
-      legendCtrl = null,
-      boundaryLayer = null;
-
-    // Coverage level definitions
-    // We categorize coverage ratio (cupos / total matricula) into four levels:
-    // 'sin'  -> Sin cobertura (0%)
-    // 'baja' -> Baja cobertura (0 < ratio = 0.5)
-    // 'media' -> Media cobertura (0.5 < ratio < 1)
-    // 'alta' -> Alta cobertura (ratio = 1)
-    const COVERAGE_LEVELS = [
-      { id: 'sin', name: 'Sin cobertura' },
-      { id: 'baja', name: 'Baja cobertura' },
-      { id: 'media', name: 'Media cobertura' },
-      { id: 'alta', name: 'Alta cobertura' },
-    ];
-
-    // Compute domain values and palette using SHAPE_ZONE_MAPPING and COLORS
-    function computeDomains() {
-      ZONES = Array.from(new Set(RAW.map((r) => r.SHAPE_ZONE))).filter(Boolean).sort();
-      LEVELS = Array.from(new Set(RAW.map((r) => r.NIVEL))).filter(Boolean).sort();
-      // Inicializar paleta con los colores definidos y generar colores para zonas adicionales
-      PALETTE = {};
-      ZONES.forEach((z) => {
-        if (SHAPE_ZONE_COLORS[z]) {
-          PALETTE[z] = SHAPE_ZONE_COLORS[z];
-        }
-      });
-      const extras = ZONES.filter((z) => !PALETTE[z]);
-      if (extras.length) {
-        const extraPalette = generatePalette(extras);
-        extras.forEach((z) => {
-          PALETTE[z] = extraPalette[z];
+        schoolsData.features.push({
+            "type": "Feature",
+            "geometry": { "type": "Point", "coordinates": [lng, lat] },
+            "properties": {
+                "name": row[idx['ESCUELA']].replace(/"/g, ''),
+                "nivel": row[idx['NIVEL']],
+                "matricula": matricula,
+                "cupos_comedor": cupoCom,
+                "cupos_dmc": cupoDMC,
+                "cupos_mesa": cupoMesa,
+                "iis_school": iis,
+                "cnp_school": cnp,
+                "zoneName": zoneName
+            }
         });
-      }
     }
+    // Cargar al mapa
+    schoolsLayer.addData(schoolsData);
+}
 
-    // Render legend on the map
-    function renderLegend(zones) {
-      if (legendCtrl) {
-        map.removeControl(legendCtrl);
-        legendCtrl = null;
-      }
-      legendCtrl = L.control({ position: 'bottomright' });
-      legendCtrl.onAdd = () => {
-        const div = L.DomUtil.create(
-          'div',
-          'bg-white/95 rounded-xl shadow border p-2 text-xs'
-        );
-        div.innerHTML = '<div class="font-semibold mb-1">Leyenda — Zonas SAE</div>';
-        zones.forEach((z) => {
-          const c = PALETTE[z] || '#444';
-          div.innerHTML += `
-            <div class="flex items-center gap-1 mb-0.5">
-              <span style="background:${c};width:12px;height:12px;border-radius:50%;display:inline-block;border:1px solid #3333"></span>
-              <span>${z}</span>
-            </div>
-          `;
-        });
-        // prevent map interactions when clicking the legend
-        L.DomEvent.disableClickPropagation(div);
-        return div;
-      };
-      legendCtrl.addTo(map);
-    }
+// Helper simple para CSV
+function parseCSVLine(text) {
+    let re_valid = /^\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*(?:,\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*)*$/;
+    let re_value = /(?!\s*$)\s*(?:'([^'\\]*(?:\\[\S\s][^'\\]*)*)'|"([^"\\]*(?:\\[\S\s][^"\\]*)*)"|([^,'"\s\\]*(?:\s+[^,'"\s\\]+)*))\s*(?:,|$)/g;
+    let a = [];
+    text.replace(re_value, function(m0, m1, m2, m3) {
+        if (m1 !== undefined) a.push(m1.replace(/\\'/g, "'"));
+        else if (m2 !== undefined) a.push(m2.replace(/\\"/g, '"'));
+        else if (m3 !== undefined) a.push(m3);
+        return '';
+    });
+    if (/,\s*$/.test(text)) a.push('');
+    return a;
+}
 
-    // Build tooltip HTML for a record
-    function buildTooltipHTML(r) {
-      const lines = [
-        `<strong>${r.ESCUELA || '(sin nombre)'}</strong>`,
-        `<em>${r.NIVEL || '—'} · ${r.SHAPE_ZONE || r.ZONA || '—'}</em>`,
-        '<hr style="margin:4px 0;">',
-        `Matrícula: <strong>${fmt(r['TOTAL MATRICULA'])}</strong>`,
-        `Cupos comedor: <strong>${fmt(r['CUPOS COMEDOR'])}</strong>`,
-        `Módulo mesa: <strong>${fmt(r['MODULO MESA'])}</strong>`,
-        `Des./Mer.: <strong>${fmt(r['CUPOS DESAYUNO/MERIENDA'])}</strong>`,
-        `Albergue: <strong>${fmt(r['CUPOS ALBERGUE'])}</strong>`,
-      ];
-      if (r['PATIOS ABIERTOS']) {
-        lines.push(
-          `Patios abiertos: <strong>${r['PATIOS ABIERTOS']}</strong>`
-        );
-      }
-      return `<div style="min-width:220px">${lines.join('<br>')}</div>`;
-    }
+// --- ESTILOS ---
+let currentMode = 'gestion';
+let zonesLayer, schoolsLayer, boxPlotIIS, boxPlotCNP;
 
-    // Render details in the sidebar
-    function renderDetails(s) {
-      const el = document.getElementById('detailsPanel');
-      if (!s) {
-        el.innerHTML =
-          '<p class="text-gray-500">Hacé clic en un punto del mapa para ver el detalle.</p>';
-        return;
-      }
-      el.innerHTML = `
-        <div class="space-y-1">
-          <p><span class="font-semibold">Escuela:</span> ${
-            s.ESCUELA ?? '—'
-          }</p>
-          <p><span class="font-semibold">Nivel:</span> ${
-            s.NIVEL ?? '—'
-          }</p>
-          <p><span class="font-semibold">Zona SAE:</span> ${s.SHAPE_ZONE ?? s.ZONA ?? '—'}</p>
-          <p><span class="font-semibold">Coordenadas:</span> ${
-            Number.isFinite(s.LATITUD) && Number.isFinite(s.LONGITUD)
-              ? s.LATITUD.toFixed(6) + ', ' + s.LONGITUD.toFixed(6)
-              : '—'
-          }</p>
-          <hr/>
-          <p><span class="font-semibold">Matrícula:</span> ${fmt(
-            s['TOTAL MATRICULA']
-          )}</p>
-          <p><span class="font-semibold">Cupos comedor:</span> ${fmt(
-            s['CUPOS COMEDOR']
-          )}</p>
-          <p><span class="font-semibold">Módulo mesa:</span> ${fmt(
-            s['MODULO MESA']
-          )}</p>
-          <p><span class="font-semibold">Des./Mer.:</span> ${fmt(
-            s['CUPOS DESAYUNO/MERIENDA']
-          )}</p>
-          <p><span class="font-semibold">Albergue:</span> ${fmt(
-            s['CUPOS ALBERGUE']
-          )}</p>
-          ${
-            s['PATIOS ABIERTOS']
-              ? `<p><span class="font-semibold">Patios abiertos:</span> ${s['PATIOS ABIERTOS']}</p>`
-              : ''
-          }
-        </div>
-      `;
-    }
+function styleZones(feature) {
+  const name = feature.properties.name;
+  let color = zoneColors.gestion[name] || '#999';
+  if(currentMode === 'gestion') return { fillColor: color, weight: 1, opacity: 0.3, color: 'white', fillOpacity: 0.4 };
+  else return { fillColor: '#fff', weight: 0, opacity: 0, fillOpacity: 0.05 };
+}
 
-    // Clear existing map layers (markers and heat)
-    function clearLayers() {
-      markersLayer?.clearLayers();
-      if (heatLayer) {
-        map.removeLayer(heatLayer);
-        heatLayer = null;
-      }
-    }
+function styleSchools(feature) {
+  let color = '#333';
+  const props = feature.properties;
+  if (currentMode === 'gestion') color = zoneColors.gestion[props.zoneName] || '#333';
+  else if(currentMode === 'iis') {
+    if(props.iis_school > 3) color = zoneColors.iis.ALTO;
+    else if(props.iis_school > 1.5) color = zoneColors.iis.MEDIO;
+    else color = zoneColors.iis.BAJO;
+  } else if(currentMode === 'cnp') {
+    if(props.cnp_school > 100) color = zoneColors.cnp.ALTO;
+    else if(props.cnp_school > 50) color = zoneColors.cnp.MEDIO;
+    else color = zoneColors.cnp.BAJO;
+  }
+  return { radius: 6, fillColor: color, color: "#fff", weight: 1.5, opacity: 1, fillOpacity: 1 };
+}
 
-    // Paint heatmap layer if checkbox is checked
-    function paintHeat(rows) {
-      const chk = document.getElementById('toggleHeat');
-      if (!chk || !chk.checked) return;
-      const pts = rows
-        .filter(
-          (r) => Number.isFinite(r.LATITUD) && Number.isFinite(r.LONGITUD)
-        )
-        .map((r) => [
-          r.LATITUD,
-          r.LONGITUD,
-          Math.max(0.2, (r['TOTAL MATRICULA'] || 0) / 1000),
-        ]);
-      if (pts.length) {
-        heatLayer = L.heatLayer(pts, {
-          radius: 22,
-          blur: 18,
-          maxZoom: 17,
-        }).addTo(map);
-      }
-    }
+// Inicialización de capas
+zonesLayer = L.geoJSON(zonesData, {
+  style: styleZones,
+  onEachFeature: (feature, layer) => {
+    layer.bindTooltip(feature.properties.name, { permanent: true, direction: "center", className: "zone-label" });
+  }
+}).addTo(map);
 
-    // Current filters from search and checkboxes
-    function currentFilters() {
-      const term = document
-        .getElementById('searchInput')
-        .value.toLowerCase()
-        .trim();
-      const zonesSel = Array.from(
-        document.querySelectorAll('#zoneFilters input:checked')
-      ).map((i) => i.value);
-      const levSel = Array.from(
-        document.querySelectorAll('#levelFilters input:checked')
-      ).map((i) => i.value);
-      const coverageType = document.getElementById('coverageType')?.value;
-      let covSel = [];
-      if (coverageType) {
-        // selected coverage categories from checkboxes
-        covSel = Array.from(
-          document.querySelectorAll('#coverageLevels input:checked')
-        ).map((i) => i.value);
-      }
-      return RAW.filter((r) => {
-        const nameOK = !term || (r.ESCUELA || '').toLowerCase().includes(term);
-        // Filtrado por zona SAE en lugar de por ZONA original
-        const zOK = !zonesSel.length || zonesSel.includes(r.SHAPE_ZONE);
-        const lOK = !levSel.length || levSel.includes(r.NIVEL);
-        // Coverage filter: only apply if a type is selected. If no levels selected, treat as no filter
-        let covOK = true;
-        if (coverageType && covSel.length) {
-          const cat = getCoverageCategory(r, coverageType);
-          covOK = cat !== null && covSel.includes(cat);
+schoolsLayer = L.geoJSON(null, {
+  pointToLayer: (feature, latlng) => L.circleMarker(latlng, styleSchools(feature)),
+  onEachFeature: (feature, layer) => {
+    layer.on('click', (e) => { L.DomEvent.stopPropagation(e); updateSelectionDetail(feature.properties); });
+  }
+}).addTo(map);
+
+// --- INTERFAZ ---
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('button[id^="btn-"]').forEach(btn => {
+      btn.className = "py-2 px-1 text-xs font-bold rounded border transition bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
+  });
+  document.getElementById(`btn-${mode}`).className = "py-2 px-1 text-xs font-bold rounded border transition bg-blue-600 text-white border-blue-600 shadow-md";
+  zonesLayer.setStyle(styleZones);
+  schoolsLayer.setStyle(styleSchools);
+  zonesLayer.eachLayer(layer => { if(mode === 'gestion') layer.openTooltip(); else layer.closeTooltip(); });
+  updateLegend();
+}
+
+function updateSelectionDetail(props) {
+    document.getElementById('empty-state').classList.add('hidden');
+    document.getElementById('selection-card').classList.remove('hidden');
+    document.getElementById('sel-title').innerText = props.name;
+    document.getElementById('sel-badge-nivel').innerText = props.nivel;
+    document.getElementById('sel-badge-zona').innerText = props.zoneName;
+    document.getElementById('sel-matricula').innerText = props.matricula;
+    document.getElementById('sel-cupos-comedor').innerText = props.cupos_comedor;
+    document.getElementById('sel-cupos-dmc').innerText = props.cupos_dmc;
+    document.getElementById('sel-cupos-mesa').innerText = props.cupos_mesa;
+    document.getElementById('sel-iis-val').innerText = props.iis_school.toFixed(2);
+    document.getElementById('sel-cnp-val').innerText = props.cnp_school.toFixed(1) + "%";
+    switchTab('resumen');
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+    document.getElementById('content-resumen').classList.add('hidden');
+    document.getElementById('content-stats').classList.add('hidden');
+    document.getElementById(`content-${tab}`).classList.remove('hidden');
+    if(tab === 'stats') renderBoxPlots();
+}
+
+function updateLegend() {
+  const container = document.getElementById('legend-content');
+  let html = '';
+  if(currentMode === 'gestion') {
+    for(let name in zoneColors.gestion) {
+        if(name !== 'DESCONOCIDA') {
+            html += `<div class="flex items-center"><span class="legend-box" style="background:${zoneColors.gestion[name]}"></span>${name}</div>`;
         }
-        return nameOK && zOK && lOK && covOK;
-      });
     }
+  } else if(currentMode === 'iis') {
+    html = `<div class="flex items-center"><span class="legend-box" style="background:${zoneColors.iis.BAJO}"></span>Baja (< 1.5)</div>
+            <div class="flex items-center"><span class="legend-box" style="background:${zoneColors.iis.MEDIO}"></span>Media (1.5 - 3)</div>
+            <div class="flex items-center"><span class="legend-box" style="background:${zoneColors.iis.ALTO}"></span>Saturación (> 3)</div>`;
+  } else {
+    html = `<div class="flex items-center"><span class="legend-box" style="background:${zoneColors.cnp.BAJO}"></span>Baja (< 50%)</div>
+            <div class="flex items-center"><span class="legend-box" style="background:${zoneColors.cnp.MEDIO}"></span>Media (50-100%)</div>
+            <div class="flex items-center"><span class="legend-box" style="background:${zoneColors.cnp.ALTO}"></span>Alta (> 100%)</div>`;
+  }
+  container.innerHTML = html;
+}
 
-    // Update map markers and heat layer
-    function updateMap() {
-      const rows = currentFilters();
-      // Update KPIs and charts
-      updateKPIs(rows);
-      updateCharts(rows);
-      // Clear existing markers/heat
-      clearLayers();
-      // Add markers
-      rows.forEach((r) => {
-        if (!Number.isFinite(r.LATITUD) || !Number.isFinite(r.LONGITUD)) return;
-        const color = PALETTE[r.SHAPE_ZONE] || '#444';
-        const marker = L.circleMarker([r.LATITUD, r.LONGITUD], {
-          radius: getRadius(r['TOTAL MATRICULA'], RAW),
-          color: '#111',
-          weight: 1,
-          fillColor: color,
-          fillOpacity: 0.8,
-        }).addTo(markersLayer);
-        marker.bindTooltip(buildTooltipHTML(r), {
-          direction: 'top',
-          offset: [0, -4],
-          sticky: true,
-          opacity: 0.95,
-        });
-        marker.on('click', () => {
-          if (selectedMarker) selectedMarker.setStyle({ weight: 1 });
-          selectedMarker = marker;
-          marker.setStyle({ weight: 3 });
-          renderDetails(r);
-        });
-      });
-      // Heatmap
-      paintHeat(rows);
-    }
+// BOXPLOTS
+function renderBoxPlots() {
+    if(boxPlotIIS) boxPlotIIS.destroy();
+    if(boxPlotCNP) boxPlotCNP.destroy();
 
-    // Update KPI counters
-    function updateKPIs(rows) {
-      const totalEsc = rows.length;
-      const totalMat = rows.reduce(
-        (a, b) => a + (b['TOTAL MATRICULA'] || 0),
-        0
-      );
-      document.getElementById('kpiEscuelas').textContent = totalEsc.toLocaleString(
-        'es-AR'
-      );
-      document.getElementById('kpiMatricula').textContent = totalMat.toLocaleString(
-        'es-AR'
-      );
-    }
+    const zones = Object.keys(zoneColors.gestion).filter(z => z !== 'DESCONOCIDA');
+    const dataIIS = [], dataCNP = [];
+    zones.forEach(zone => {
+        const schools = schoolsData.features.filter(f => f.properties.zoneName === zone);
+        if(schools.length > 0) {
+            dataIIS.push(schools.map(s => s.properties.iis_school));
+            dataCNP.push(schools.map(s => s.properties.cnp_school));
+        } else { dataIIS.push([]); dataCNP.push([]); }
+    });
 
-    // Update the bar charts in the analysis tab
-    function updateCharts(rows) {
-      // Calcular índice de intensidad alimentaria (IIS) por zona
-      const byZoneIIS = {};
-      rows.forEach((r) => {
-        const zone = r.SHAPE_ZONE;
-        // Calcular el IIS al vuelo como (cupos_totales / matrícula total)
-        const cupsComedor = Number(r['CUPOS COMEDOR']) || 0;
-        const cupsDM = Number(r['CUPOS DESAYUNO/MERIENDA']) || 0;
-        const cupsMesa = Number(r['MODULO MESA']) || 0;
-        let cupsAlbergue = 0;
-        // Algunos valores de albergue pueden ser textos (ej.: 'JC'), los ignoramos
-        if (typeof r['CUPOS ALBERGUE'] === 'number') {
-          cupsAlbergue = r['CUPOS ALBERGUE'];
-        }
-        const totalMat = Number(r['TOTAL MATRICULA']) || 0;
-        const iisVal = totalMat > 0 ? (cupsComedor + cupsDM + cupsMesa + cupsAlbergue) / totalMat : 0;
-        if (!byZoneIIS[zone]) byZoneIIS[zone] = [];
-        byZoneIIS[zone].push(iisVal);
-      });
-      const zLabels = Object.keys(byZoneIIS).sort();
-      // Dibujar boxplot de IIS por zona en un canvas
-      const canvas = document.getElementById('chartIISBoxplot');
-      if (!canvas) return;
-      // Ajustar el tamaño del canvas al contenedor
-      const ctx = canvas.getContext('2d');
-      // Establecer dimensiones basadas en el tamaño visible del canvas
-      const width = canvas.clientWidth || 300;
-      const height = canvas.clientHeight || 220;
-      canvas.width = width;
-      canvas.height = height;
-      // Margenes para los ejes
-      const marginLeft = 40;
-      const marginRight = 10;
-      const marginTop = 20;
-      const marginBottom = 80;
-      const chartWidth = width - marginLeft - marginRight;
-      const chartHeight = height - marginTop - marginBottom;
-      // Limpiar canvas
-      ctx.clearRect(0, 0, width, height);
-      // Si no hay datos, salir
-      if (zLabels.length === 0) return;
-      // Calcular estadísticas por zona
-      function median(arr) {
-        const n = arr.length;
-        if (n === 0) return 0;
-        const mid = Math.floor(n / 2);
-        if (n % 2) return arr[mid];
-        return (arr[mid - 1] + arr[mid]) / 2;
-      }
-      function quartiles(vals) {
-        if (!vals.length) return { min: 0, q1: 0, median: 0, q3: 0, max: 0 };
-        const sorted = vals.slice().sort((a, b) => a - b);
-        const n = sorted.length;
-        const med = median(sorted);
-        const lower = sorted.slice(0, Math.floor(n / 2));
-        const upper = sorted.slice(Math.ceil(n / 2));
-        const q1 = median(lower);
-        const q3 = median(upper);
-        return { min: sorted[0], q1, median: med, q3, max: sorted[n - 1] };
-      }
-      const stats = {};
-      let globalMax = 0;
-      zLabels.forEach((zone) => {
-        const vals = byZoneIIS[zone] || [];
-        const q = quartiles(vals);
-        stats[zone] = q;
-        globalMax = Math.max(globalMax, q.max);
-      });
-      // Ajustar el máximo para que el eje se vea bien (redondear hacia arriba)
-      if (globalMax <= 0) globalMax = 1;
-      // Función para convertir valor IIS a coordenada Y en el canvas
-      const yScale = (val) => {
-        return marginTop + chartHeight * (1 - val / globalMax);
-      };
-      const zoneCount = zLabels.length;
-      const barWidth = chartWidth / zoneCount;
-      // Dibujar ejes
-      ctx.strokeStyle = '#333';
-      ctx.lineWidth = 1;
-      // Eje Y
-      ctx.beginPath();
-      ctx.moveTo(marginLeft, marginTop);
-      ctx.lineTo(marginLeft, marginTop + chartHeight);
-      ctx.stroke();
-      // Ticks del eje Y (0, 25%, 50%, 75%, 100%)
-      ctx.fillStyle = '#333';
-      ctx.font = '10px Inter, sans-serif';
-      const tickCount = 5;
-      for (let i = 0; i <= tickCount; i++) {
-        const value = (globalMax * i) / tickCount;
-        const y = yScale(value);
-        ctx.beginPath();
-        ctx.moveTo(marginLeft - 4, y);
-        ctx.lineTo(marginLeft, y);
-        ctx.stroke();
-        ctx.fillText(value.toFixed(1), marginLeft - 6 - ctx.measureText(value.toFixed(1)).width, y + 3);
-      }
-      // Eje X
-      ctx.beginPath();
-      ctx.moveTo(marginLeft, marginTop + chartHeight);
-      ctx.lineTo(marginLeft + chartWidth, marginTop + chartHeight);
-      ctx.stroke();
-      // Dibujar cada caja
-      zLabels.forEach((zone, idx) => {
-        const stat = stats[zone];
-        const color = PALETTE[zone] || '#555';
-        const xCenter = marginLeft + barWidth * idx + barWidth / 2;
-        const halfBoxWidth = Math.max(10, barWidth * 0.3);
-        // Coordenadas verticales
-        const yMin = yScale(stat.min);
-        const yQ1 = yScale(stat.q1);
-        const yMed = yScale(stat.median);
-        const yQ3 = yScale(stat.q3);
-        const yMax = yScale(stat.max);
-        // Dibujo de caja (rectángulo entre Q1 y Q3)
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        // Usar alpha para relleno
-        ctx.fillStyle = color;
-        ctx.save();
-        ctx.globalAlpha = 0.4;
-        const rectX = xCenter - halfBoxWidth;
-        const rectWidth = halfBoxWidth * 2;
-        const rectY = yQ3;
-        const rectHeight = yQ1 - yQ3;
-        ctx.beginPath();
-        ctx.rect(rectX, rectY, rectWidth, rectHeight);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-        // Línea mediana
-        ctx.beginPath();
-        ctx.moveTo(rectX, yMed);
-        ctx.lineTo(rectX + rectWidth, yMed);
-        ctx.stroke();
-        // Bigotes
-        // Línea vertical inferior (min a Q1)
-        ctx.beginPath();
-        ctx.moveTo(xCenter, yMin);
-        ctx.lineTo(xCenter, yQ1);
-        ctx.stroke();
-        // Línea vertical superior (Q3 a max)
-        ctx.beginPath();
-        ctx.moveTo(xCenter, yQ3);
-        ctx.lineTo(xCenter, yMax);
-        ctx.stroke();
-        // Línea horizontal en mínimo
-        ctx.beginPath();
-        ctx.moveTo(xCenter - halfBoxWidth * 0.3, yMin);
-        ctx.lineTo(xCenter + halfBoxWidth * 0.3, yMin);
-        ctx.stroke();
-        // Línea horizontal en máximo
-        ctx.beginPath();
-        ctx.moveTo(xCenter - halfBoxWidth * 0.3, yMax);
-        ctx.lineTo(xCenter + halfBoxWidth * 0.3, yMax);
-        ctx.stroke();
-        // No se dibujan puntos individuales; los valores de cuartiles se muestran en la leyenda
-      });
-      // Actualizar la leyenda de cuartiles por zona
-      const legendEl = document.getElementById('iisLegend');
-      if (legendEl) {
-        let html = '<table class="w-full table-auto border-collapse text-left"><thead><tr>' +
-                   '<th class="pr-2">Zona</th>' +
-                   '<th class="pr-2">Min</th>' +
-                   '<th class="pr-2">Q1</th>' +
-                   '<th class="pr-2">Mediana</th>' +
-                   '<th class="pr-2">Q3</th>' +
-                   '<th class="pr-2">Max</th></tr></thead><tbody>';
-        zLabels.forEach((z) => {
-          const q = stats[z];
-          const color = PALETTE[z] || '#555';
-          html += '<tr>' +
-                  '<td class="py-0.5"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:' + color + ';margin-right:4px;border:1px solid #333"></span>' + z + '</td>' +
-                  '<td>' + q.min.toFixed(2) + '</td>' +
-                  '<td>' + q.q1.toFixed(2) + '</td>' +
-                  '<td>' + q.median.toFixed(2) + '</td>' +
-                  '<td>' + q.q3.toFixed(2) + '</td>' +
-                  '<td>' + q.max.toFixed(2) + '</td>' +
-                  '</tr>';
-        });
-        html += '</tbody></table>';
-        legendEl.innerHTML = html;
-      }
-    }
+    const configBox = (title, labels, data, color) => ({
+        type: 'boxplot',
+        data: {
+            labels: labels,
+            datasets: [{ label: title, backgroundColor: color, borderColor: '#334155', borderWidth: 1, outlierColor: '#ef4444', padding: 10, itemRadius: 2, data: data }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: {size:9}, autoSkip: false, maxRotation: 90, minRotation: 90 } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' } } } }
+    });
 
-    // Build filter checkboxes for zone and level
-    function rebuildFilters() {
-      const zDiv = document.getElementById('zoneFilters');
-      const lDiv = document.getElementById('levelFilters');
-      zDiv.innerHTML = '';
-      lDiv.innerHTML = '';
-      ZONES.forEach((z) => {
-        const lbl = document.createElement('label');
-        lbl.className = 'inline-flex items-center text-sm mr-2';
-        lbl.innerHTML = `<input type="checkbox" value="${z}" checked class="mr-1 accent-blue-600"><span>${z}</span>`;
-        zDiv.appendChild(lbl);
-      });
-      LEVELS.forEach((l) => {
-        const lbl = document.createElement('label');
-        lbl.className = 'inline-flex items-center text-sm mr-2';
-        lbl.innerHTML = `<input type="checkbox" value="${l}" checked class="mr-1 accent-blue-600"><span>${l}</span>`;
-        lDiv.appendChild(lbl);
-      });
-      // Reattach event listeners
-      document.getElementById('searchInput').addEventListener('input', updateMap);
-      zDiv.querySelectorAll('input').forEach((i) => i.addEventListener('change', updateMap));
-      lDiv.querySelectorAll('input').forEach((i) => i.addEventListener('change', updateMap));
-      document.getElementById('toggleHeat').addEventListener('change', updateMap);
+    const ctxIIS = document.getElementById('boxPlotIIS').getContext('2d');
+    boxPlotIIS = new Chart(ctxIIS, configBox('IIS', zones, dataIIS, 'rgba(239, 68, 68, 0.5)'));
+    const ctxCNP = document.getElementById('boxPlotCNP').getContext('2d');
+    boxPlotCNP = new Chart(ctxCNP, configBox('CNP', zones, dataCNP, 'rgba(34, 197, 94, 0.5)'));
+}
 
-      // Build coverage levels UI if a type is selected
-      buildCoverageLevels();
-    }
-
-    // Build coverage level checkboxes based on selected type. When no type is selected
-    // the levels container is cleared.
-    function buildCoverageLevels() {
-      const typeSel = document.getElementById('coverageType');
-      const cont = document.getElementById('coverageLevels');
-      if (!typeSel || !cont) return;
-      const val = typeSel.value;
-      cont.innerHTML = '';
-      if (!val) {
-        return;
-      }
-      // Create checkboxes for each coverage level
-      COVERAGE_LEVELS.forEach((lvl) => {
-        const lbl = document.createElement('label');
-        lbl.className = 'inline-flex items-center text-sm mr-2 mb-1';
-        lbl.innerHTML = `<input type="checkbox" value="${lvl.id}" checked class="mr-1 accent-blue-600"><span>${lvl.name}</span>`;
-        cont.appendChild(lbl);
-      });
-      // Add change listeners to checkboxes
-      cont.querySelectorAll('input').forEach((i) => i.addEventListener('change', updateMap));
-    }
-
-    // Download the map as PNG or JPG
-    function downloadMapImage() {
-      leafletImage(map, function (err, canvas) {
-        if (err) {
-          console.error('Error generating image', err);
-          return;
-        }
-        // Ask user which format (PNG or JPG). We'll default to PNG if not specified.
-        const fmt = prompt(
-          'Elegí el formato de imagen: escribe "png" o "jpg" (predeterminado PNG)',
-          'png'
-        );
-        const format = fmt && fmt.toLowerCase() === 'jpg' ? 'jpg' : 'png';
-        const dataURL = canvas.toDataURL(
-          format === 'jpg' ? 'image/jpeg' : 'image/png'
-        );
+async function downloadElement(elementId, fileName) {
+    const element = document.getElementById(elementId);
+    const options = { allowTaint: true, useCORS: true, logging: false };
+    if(elementId === 'map') options.ignoreElements = (node) => node.classList.contains('leaflet-control-zoom') || node.classList.contains('leaflet-control-download');
+    try {
+        const canvas = await html2canvas(element, options);
         const link = document.createElement('a');
-        link.download = `mapa_canuelas.${format}`;
-        link.href = dataURL;
+        link.download = fileName + '.png';
+        link.href = canvas.toDataURL();
         link.click();
-      });
-    }
+    } catch(err) { alert("Error: " + err); }
+}
 
-    // Fetch political boundary of Cañuelas from OSM or fallback
-    const FALLBACK_BOUNDARY = {
-      type: 'Polygon',
-      coordinates: [
-        [
-          [-58.935271, -35.426647],
-          [-58.47, -35.426647],
-          [-58.47, -34.892004],
-          [-58.935271, -34.892004],
-          [-58.935271, -35.426647],
-        ],
-      ],
-    };
-    async function fetchBoundary() {
-      const url =
-        'https://polygons.openstreetmap.fr/get_geojson.py?id=2498288&download=true';
-      try {
-        const res = await fetch(url, { mode: 'cors' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const gj = await res.json();
-        if (gj.type === 'FeatureCollection') return gj;
-        if (gj.type === 'Feature')
-          return { type: 'FeatureCollection', features: [gj] };
-        return {
-          type: 'FeatureCollection',
-          features: [{ type: 'Feature', properties: {}, geometry: gj }],
-        };
-      } catch (e) {
-        // fallback to bounding box polygon
-        return {
-          type: 'FeatureCollection',
-          features: [
-            {
-              type: 'Feature',
-              properties: { source: 'fallback-bbox' },
-              geometry: FALLBACK_BOUNDARY,
-            },
-          ],
-        };
-      }
-    }
+function downloadPanel() {
+    const activeTab = document.getElementById('tab-resumen').classList.contains('active') ? 'resumen' : 'stats';
+    downloadElement(activeTab === 'resumen' ? 'selection-card' : 'content-stats', 'SAE_' + activeTab);
+}
 
-    // Initialize the map and load initial data
-    (async function init() {
-      // Initialise Leaflet map
-      map = L.map('map');
-      // Initialise tile layer with crossOrigin so leaflet-image can include
-      // tiles and overlays when exporting. Without this option the exported
-      // canvas would omit boundaries, markers and legend.
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap',
-        crossOrigin: true,
-      }).addTo(map);
-      markersLayer = L.layerGroup().addTo(map);
-
-      // Fetch and draw boundary
-      const boundaryFC = await fetchBoundary();
-      boundaryLayer = L.geoJSON(boundaryFC, {
-        style: { color: '#2c3e50', weight: 2, fillOpacity: 0 },
-      }).addTo(map);
-      try {
-        map.fitBounds(boundaryLayer.getBounds(), { padding: [10, 10] });
-      } catch (e) {
-        // fallback center
-        map.setView([-35.08, -58.75], 11);
-      }
-
-      // Cargar datos incrustados de ejemplo por defecto
-      RAW = prepareData(SAMPLE_DATA);
-      computeDomains();
-      rebuildFilters();
-      renderLegend(ZONES);
-      updateMap();
-
-      // Show notice if there are rows without coordinates
-      const total = RAW.length;
-      const missing = RAW.filter(
-        (r) => !Number.isFinite(r.LATITUD) || !Number.isFinite(r.LONGITUD)
-      ).length;
-      if (missing > 0) {
-        alert(
-          `${missing} de ${total} escuelas no tienen coordenadas válidas y no se muestran en el mapa.`
-        );
-      }
-
-      // File upload handler
-      document.getElementById('csvFile').addEventListener('change', (e) => {
-        const f = e.target.files?.[0];
-        if (!f) return;
-        Papa.parse(f, {
-          header: true,
-          skipEmptyLines: true,
-          encoding: 'UTF-8',
-          complete: (res) => {
-            RAW = prepareData(res.data);
-            computeDomains();
-            rebuildFilters();
-            renderLegend(ZONES);
-            updateMap();
-          },
-        });
-      });
-
-      // Coverage type change handler: rebuild levels and update map
-      const coverageTypeEl = document.getElementById('coverageType');
-      if (coverageTypeEl) {
-        coverageTypeEl.addEventListener('change', () => {
-          buildCoverageLevels();
-          updateMap();
-        });
-      }
-
-      // Map download button
-      document
-        .getElementById('btnDownloadMap')
-        .addEventListener('click', downloadMapImage);
-
-      // Tab switching logic
-      document.querySelectorAll('.tablink').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const tab = btn.getAttribute('data-tab');
-          document
-            .querySelectorAll('.tablink')
-            .forEach((b) => b.classList.remove('border-blue-600', 'text-blue-600'));
-          btn.classList.add('border-blue-600', 'text-blue-600');
-          document
-            .querySelectorAll('.tabcontent')
-            .forEach((tc) => tc.classList.add('hidden'));
-          document
-            .getElementById(`tab-content-${tab}`)
-            .classList.remove('hidden');
-        });
-      });
-    })();
-  </script>
+// INICIO
+parseCSVAndLoad();
+setMode('gestion');
+updateLegend();
+</script>
 </body>
 </html>
