@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Monitor SAE Cañuelas 2025</title>
+  <title>Monitor SAE Cañuelas 2025 - Final</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -14,6 +14,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@sgratzl/chartjs-chart-boxplot@4.2.0/build/index.umd.min.js"></script>
   <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
   <style>
     body { font-family: 'Inter', sans-serif; }
@@ -25,6 +26,31 @@
     .zone-label { background: transparent; border: none; box-shadow: none; font-size: 10px; font-weight: 800; color: #334155; text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; text-transform: uppercase; white-space: nowrap; }
     .leaflet-control-download { background: white; width: 34px; height: 34px; border-radius: 4px; box-shadow: 0 1px 5px rgba(0,0,0,0.65); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
     .leaflet-control-download:hover { background: #f4f4f4; }
+    
+    /* --- ESTILOS CORREGIDOS DEL POPUP --- */
+    .leaflet-popup-content-wrapper { 
+        padding: 0; 
+        border-radius: 12px; 
+        overflow: hidden; 
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    .leaflet-popup-content { 
+        margin: 0 !important; 
+        width: 300px !important; /* Ancho fijo más grande */
+        line-height: 1.4;
+    }
+    .leaflet-container a.leaflet-popup-close-button {
+        color: white !important; /* X blanca */
+        top: 12px;
+        right: 12px;
+        text-shadow: none;
+        opacity: 0.8;
+    }
+    .leaflet-container a.leaflet-popup-close-button:hover {
+        opacity: 1;
+        background: rgba(255,255,255,0.2);
+        border-radius: 50%;
+    }
   </style>
 </head>
 <body class="flex h-screen overflow-hidden text-slate-800 bg-slate-100">
@@ -33,6 +59,7 @@
     <div class="p-5 border-b border-slate-100 bg-slate-50">
       <h1 class="text-xl font-bold text-slate-800 tracking-tight">SAE CAÑUELAS 2025</h1>
       <p class="text-xs text-slate-500 font-medium mt-1">Tesina Lic. Sociología FAHCE-UNLP</p>
+      <p id="counter-schools" class="text-[10px] text-blue-600 font-bold mt-2 uppercase tracking-wider">Cargando datos...</p>
     </div>
 
     <div class="p-4 border-b border-slate-100">
@@ -45,60 +72,17 @@
     </div>
 
     <div class="flex border-b border-slate-200 px-4 space-x-4 bg-white sticky top-0 z-10">
-      <button onclick="switchTab('resumen')" id="tab-resumen" class="tab-btn active py-3 text-xs uppercase tracking-wide flex-1 text-center">Ficha Escuela</button>
-      <button onclick="switchTab('stats')" id="tab-stats" class="tab-btn py-3 text-xs uppercase tracking-wide flex-1 text-center">Estadísticas</button>
+      <button onclick="switchTab('resumen')" id="tab-resumen" class="tab-btn active py-3 text-xs uppercase tracking-wide flex-1 text-center">Análisis de Zona</button>
+      <button onclick="switchTab('stats')" id="tab-stats" class="tab-btn py-3 text-xs uppercase tracking-wide flex-1 text-center">Comparativa Global</button>
     </div>
 
     <div id="panel-content" class="flex-1 overflow-y-auto p-4 bg-slate-50/50 relative">
       <div id="content-resumen" class="animate-fade-in space-y-4">
         <div id="empty-state" class="text-center py-10 text-slate-400">
-          <p class="text-sm">Selecciona una escuela en el mapa.</p>
+          <p class="text-sm font-bold text-slate-500">Selecciona una ZONA en el mapa</p>
+          <p class="text-xs mt-2">Haz clic sobre un área coloreada para ver sus estadísticas.</p>
         </div>
-        <div id="selection-card" class="bg-white rounded-xl border border-blue-200 shadow-md hidden overflow-hidden">
-          <div class="bg-blue-50 p-4 border-b border-blue-100">
-            <h3 class="text-base font-bold text-blue-900 leading-tight" id="sel-title">Nombre Escuela</h3>
-            <div class="flex gap-2 mt-2">
-               <span id="sel-badge-nivel" class="text-[10px] uppercase font-bold bg-white text-blue-600 px-2 py-1 rounded border border-blue-100"></span>
-               <span id="sel-badge-zona" class="text-[10px] uppercase font-bold bg-white text-slate-600 px-2 py-1 rounded border border-slate-200"></span>
-            </div>
-          </div>
-          <div class="p-4 space-y-5">
-            <div>
-              <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-100 pb-1">Cupos SAE (Base Oficial)</h4>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="bg-slate-50 p-2 rounded border border-slate-100">
-                  <span class="block text-xl font-bold text-slate-700" id="sel-matricula">-</span>
-                  <span class="text-[10px] text-slate-500 uppercase">Matrícula</span>
-                </div>
-                <div class="bg-orange-50 p-2 rounded border border-orange-100">
-                  <span class="block text-xl font-bold text-orange-700" id="sel-cupos-comedor">-</span>
-                  <span class="text-[10px] text-orange-600 uppercase">Comedor</span>
-                </div>
-                <div class="bg-green-50 p-2 rounded border border-green-100">
-                  <span class="block text-xl font-bold text-green-700" id="sel-cupos-dmc">-</span>
-                  <span class="text-[10px] text-green-600 uppercase">DMC (Des/Mer)</span>
-                </div>
-                <div class="bg-blue-50 p-2 rounded border border-blue-100">
-                  <span class="block text-xl font-bold text-blue-700" id="sel-cupos-mesa">-</span>
-                  <span class="text-[10px] text-blue-600 uppercase">MESA (Cajas)</span>
-                </div>
-              </div>
-            </div>
-            <div>
-              <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-100 pb-1">Indicadores</h4>
-              <div class="space-y-3">
-                <div class="flex justify-between items-center">
-                  <span class="text-xs font-bold text-slate-700">IIS (Intensidad)</span>
-                  <span class="text-sm font-mono font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded" id="sel-iis-val">-</span>
-                </div>
-                <div class="flex justify-between items-center">
-                  <span class="text-xs font-bold text-slate-700">CNP (Calculado)</span>
-                  <span class="text-sm font-mono font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded" id="sel-cnp-val">-</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div id="stats-container"></div>
       </div>
 
       <div id="content-stats" class="hidden space-y-6 animate-fade-in bg-white p-2">
@@ -130,110 +114,110 @@
   </main>
 
 <script id="csv-data" type="text/plain">
-BARRIO,ZONA,ESCUELA,NIVEL,DIRECCION,SECTOR,JORNADA,TOTAL MATRICULA,BUFET/KIOSCO,LATITUD,LONGITUD,CUPOS COMEDOR,CUPOS DESAYUNO/MERIENDA,CUPOS ALBERGUE,PATIOS ABIERTOS,modulo MESA,IIS
-Paraje La Tapie,CAMINO PANELO,E.P. N° 13 Paula Albarracín de Sarmiento,Primario,Camino Panelo,Estatal,Completa/Doble (40 hs. y mas semanales),33,S/D,-35.08303177,-58.78846377,33,66,JC,,27,3.818181818
-Barrio Los Álamos,RUTA 205 - CAMINO A LAS HERAS,JIRIMM N° 4,Inicial,Cuartel 3º Camino Real a Las Heras,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.01862123,-58.81051475,7,7,,,7,4.2
-Gobernador Udaondo,CORREDOR UDAONDO,J. I. N° 905,Inicial,Ruta 16 y calle Panamá,Estatal,Jornada Simple (Hasta 20 hs. semanales),26,S/D,-35.29708726,-58.59289068,30,20,,,17,2.576923077
-Barrio Hipotecario,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 02 Cnel. De Marina Leonardo Rosales,Secundaria,Remedios de Escalada 215,Estatal,Jornada Simple (Hasta 20 hs. semanales),635,S/D,-35.06236728,-58.75264325,60,300,N/C,,306,1.048818898
-Paraje La Tapie,CAMINO PANELO,JIRIMM N° 6 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Camino Panelo,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.08303177,-58.78846377,7,5,,,4,3.2
-Gobernador Udaondo,CORREDOR UDAONDO,E.P. N° 2 Tambor de Tacuarí,Primario,Cuartel 15,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,S/D,-35.26434972,-58.67387492,6,6,,,6,3.6
-Barrio Arquitectura,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 11 Nuestra Sra. del Carmen,Primario,Tucumán N° 295,Estatal,Extendida (25 a 29 hs),499,S/D,-35.06240865,-58.75371417,40,430,N/C,,466,1.875751503
-Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,"J. I. N° 906 ""LA CALEDONIA""",Inicial,Urquiza y Sarmiento Ruta Nº 205 Km. 59.5,Estatal,Jornada Simple (Hasta 20 hs. semanales),78,S/D,-35.01893004,-58.7215432,,82,,,83,2.115384615
-Paraje La Leonor,CORREDOR UDAONDO,E.P. N° 7 Sargento Cabral,Primario,Cuartel 14 Camino del Gasoducto,Estatal,Jornada Simple (Hasta 20 hs. semanales),12,S/D,-35.19199013,-58.64993129,16,14,,,16,3.833333333
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 919,Inicial,Acuña y Azcuenaga,Estatal,Jornada Simple (Hasta 20 hs. semanales),140,S/D,-35.05136428,-58.75413829,,180,N/C,,110,2.071428571
-Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 17 Vicente Casares,Primario,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),153,S/D,-34.96405035,-58.6517067,,124,,,109,1.522875817
-Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 902,Inicial,Olavarria 1042,Estatal,Jornada Simple (Hasta 20 hs. semanales),201,S/D,-35.04590565,-58.76306826,,288,N/C,,169,2.273631841
-Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 05,Secundaria,Garcilazo de la Vega N° 165,Estatal,Jornada Simple (Hasta 20 hs. semanales),580,S/D,-34.95374525,-58.73525537,98,300,,,454,1.468965517
-Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 14,Secundaria,"Urquiza S/N Ruta Nº 205 Km. 59,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),149,S/D,-35.01928306,-58.72169429,40,145,,,101,1.919463087
-Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 15 Hipólito Yrigoyen,Primario,Hipólito Yrigoyen 1142,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),177,S/D,-35.04664009,-58.76182712,130,274,N/C,22,132,3.152542373
-Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08 ANEXO 1,Secundaria,"Bicentenario S/N Ruta Nº 205 Km 75,501",Estatal,Jornada Simple (Hasta 20 hs. semanales),57,S/D,-35.07224814,-58.8637215,35,45,,,20,1.754385965
-Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 907,Inicial,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),80,S/D,-34.97890335,-58.67463043,,90,,,73,2.0375
-Paraje La Noria,CORREDOR UDAONDO,E.P. N° 19 Bernardino Rivadavia,Primario,Estación La Noria,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),8,S/D,-35.16567752,-58.78896305,9,9,,,8,3.25
-Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 12 Remedios de Escalada de San Martín,Primario,"Bicentenario S/N Ruta Nº 205 Km 75,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),55,S/D,-35.07244551,-58.86363315,38,62,,,38,2.509090909
-Barrio San Esteban,CORREDOR RUTA 3 CAMINO A CAPITAL,J.I. Nº 908,Inicial,"Ombú y Acacia S/N° Rta. 3 Km. 54,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),229,S/D,-34.96063262,-58.72795605,224,224,,,194,2.80349345
-Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 16 Manuel Belgrano,Primario,Garcilazo de la Vega N° 147,Estatal,Jornada Simple (Hasta 20 hs. semanales),219,S/D,-34.95374525,-58.73525537,65,195,,,227,2.223744292
-Barrio Belgrano de Máximo Paz Oeste,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 26 Mariano Moreno,Primario,"25 de Mayo S/N Rta. 3 Km. 43,5",Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),199,S/D,-34.89861613,-58.64804059,111,308,,34,202,3.291457286
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 27 Bartolomé Mitre,Primario,Moreno N° 317 Esquina Velez Sarfield,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),507,Si,-35.05884857,-58.75942572,13,450,N/C,,255,1.41617357
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Primario,HIPOLITO IRIGOYEN 418,Privada,Jornada Simple (Hasta 20 hs. semanales),181,Si,-35.05084898,-58.76743844,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Secundaria,HIPOLITO IRIGOYEN 418,Privada,Jornada Completa/Doble (40 hs. y mas semanales),87,Si,-35.05084898,-58.76743844,,,,,0,0
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJAN,Primario,SARMIENTO 264,Privada,Jornada Simple (Hasta 20 hs. semanales),208,S/D,-34.9400768,-58.61392138,,,,,0,0
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Inicial,SAN EDUARDO 92,Privada,Jornada Simple (Hasta 20 hs. semanales),267,S/D,-34.9400118,-58.61388948,,,,,0,0
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Secundaria,SARMIENTO 264,Privada,Jornada Simple (Hasta 20 hs. semanales),206,S/D,-34.94003562,-58.61381526,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SANTA MARIA,Primario,MOSCONI 255,Privada,Jornada Simple (Hasta 20 hs. semanales),936,Si,-35.05864217,-58.74807558,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SECUNDARIO SANTA MARIA,Secundaria,CALLE DEL CARMEN E/LARA Y BRANDSEN 441,Privada,Jornada Simple (Hasta 20 hs. semanales),736,Si,-35.05475463,-58.7617634,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,JARDÍN DE INFANTES LA SAGRADA FAMILIA,Inicial,BASAVILBASO E/MORENO Y BRANDSEN 331,Privada,Jornada Simple (Hasta 20 hs. semanales),327,S/D,-35.05807919,-58.75999575,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Inicial,PARAGUAY 728,Privada,Jornada Simple (Hasta 20 hs. semanales),82,S/D,-35.03721646,-58.74341626,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Primario,PARAGUAY 728,Privada,Jornada Extendida (de 21 a 24 hs. semanales),182,S/D,-35.03698613,-58.74329155,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Secundaria,PARAGUAY 728,Privada,Jornada Extendida (30 Hs semanales),179,S/D,-35.03698613,-58.74329155,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Inicial,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),59,S/D,-35.05744769,-58.7596404,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Primario,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),59,S/D,-35.05744769,-58.7596404,,,,,0,0
-cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Secundaria,BASAVILBASO 408,Privada,Jornada Simple (Hasta 20 hs. semanales),,S/D,-35.05744769,-58.7596404,,,,,0,
-Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.A.S DON BOSCO,Secundaria,Av. Valeria de Crotto 2001,Privada,Extendida,410,Si,-35.1330864,-58.87657567,,,,,0,0
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.S.T. Nº 1 Cnel. Manuel Dorrego,Secundaria,Basavilbaso 253,Estatal,"Jornada Extendida (de 35 a 39 hs. semanales), Jornada Simple (Hasta 20 hs. semanales)",1081,Si,-35.05872514,-58.76063681,100,750,N/C,,444,1.197039778
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 1 Domingo F. Sarmiento,Primario,Del Carmen 517,Estatal,Extendida (25 a 28 hs semanales),537,Si,-35.05439887,-58.7618878,7,475,N/C,,375,1.595903166
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 09,Secundaria,Manuel Acuña N° 1171,Estatal,Jornada Simple (Hasta 20 hs. semanales),529,S/D,-35.05069273,-58.75328858,45,250,N/C,,281,1.088846881
-Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,E.E.S. Nº 16 (Ex - Extensión 3031),Secundaria,Ruta Nº 3 Km. 76.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),72,S/D,-35.1465727,-58.74148636,37,80,,,65,2.527777778
-Barrio La Torre de Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 20 Malvinas Argentinas,Primario,Corrientes N° 278 e/Córdoba y Sta. Fe,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),224,S/D,-34.94557904,-58.62415353,100,230,,,190,2.321428571
-Paraje La Leonor,CORREDOR UDAONDO,JIRIMM N° 5 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Cuartel 14 Camino del Gasoducto,Estatal,Jornada Simple (Hasta 20 hs. semanales),3,S/D,-35.19235773,-58.64995977,2,2,,,2,2
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,"J. I. N° 911 ""EL PEQUEÑO DE ASIS""",Inicial,Antártida Argentina N° 795 Esquina Mitre,Estatal,Jornada Simple (Hasta 20 hs. semanales),128,S/D,-35.04951501,-58.76355394,,155,N/C,,86,1.8828125
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 28 Clotilde Guillén de Rezzano,Primario,Vicente Peñaloza 2349,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),448,S/D,-34.9388936,-58.60916797,458,968,,,389,4.051339286
-Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 06,Secundaria,Pueyrredón y Dupuy Rta. Nº 3 Km. 52.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),399,S/D,-34.93809816,-58.73126751,,287,,,233,1.303258145
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 32 José Manuel Estrada,Primario,Rivadavia N° 467,Estatal,Jornada Extendida (de 21 a 24 hs. semanales),300,S/D,-35.0551473,-58.75782247,,300,N/C,,99,1.33
-Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,"E.E.S. Nº 12 ""JULIO CAO, HÉROE DE MALVINAS""",Secundaria,San Juan N° 2450,Estatal,Jornada Simple (Hasta 20 hs. semanales),168,S/D,-35.04010823,-58.73756626,35,50,N/C,,80,0.9821428571
-Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,E.P. N° 29 Antártida Argentina,Primario,"Ruta Nº 6 Km. 82,500 Camino a La Plata",Estatal,Jornada Completa/Doble (40 hs. y mas semanales),23,S/D,-35.07762311,-58.65486957,24,48,JC,,19,3.956521739
-Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,J. I. N° 910,Inicial,"Mariano de Nocochea 360 Rta.3 Km.52,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),141,S/D,-34.89856895,-58.64797376,62,151,,,150,2.574468085
-Barrio Buen Pastor,CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION I DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº12,Secundaria,Hipólito Yrigoyen 1142,Estatal,Jornada Simple (Hasta 20 hs. semanales),80,S/D,-35.04664009,-58.76182712,22,35,N/C,,45,1.275
-Barrio La Torre de Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 17 (Ex- Extension N° 2100),Secundaria,Corrientes N° 278 e/Córdoba y Sta. Fe,Estatal,Jornada Simple (Hasta 20 hs. semanales),247,S/D,-34.94557904,-58.62415353,,139,,,154,1.186234818
-Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 912,Inicial,Brasil 453,Estatal,Jornada Simple (Hasta 20 hs. semanales),121,S/D,-35.04059402,-58.74145502,,110,N/C,,100,1.73553719
-Villa Adriana,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 18 (Ex- Extensión Nº 2140),Secundaria,"Estrada N° 739 Ruta Nº 205 Km. 57,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),108,S/D,-34.99796929,-58.68709254,25,32,,,87,1.333333333
-Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,E.P. N° 8 Martín Guemes,Primario,Ruta Nº 3 Km. 76.500,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),81,S/D,-35.14659435,-58.74158876,87,172,,,72,4.086419753
-Barrio La Garita,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 14 Juan Martín de Pueyrredón,Primario,"Urquiza S/N Ruta Nº 205 Km. 59,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),212,S/D,-35.01928306,-58.72169429,55,160,,,145,1.698113208
-Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 34 Héroes de Malvinas,Primario,Godoy Cruz N° 383,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),186,S/D,-35.04297395,-58.76913898,190,380,N/C,,185,4.059139785
-Barrio Arquitectura,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 909,Inicial,Tucumán N° 287,Estatal,Jornada Simple (Hasta 20 hs. semanales),223,S/D,-35.0629581,-58.75435172,,282,N/C,,180,2.071748879
-Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 10,Secundaria,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),185,S/D,-34.96401504,-58.65168389,,112,,,94,1.113513514
-Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,CENTRO EDUCATIVO PARA LA PRODUCCIÓN TOTAL Nº33,Secundaria,"ruta 6 km 75,500 2 km CAMINO REAL A MONTE S/N",Estatal,Completa/alternancia,101,S/D,-35.09091202,-58.59271988,38,0,38,,111,1.851485149
-Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 30 Juana Manso,Primario,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),131,S/D,-34.97890335,-58.67463043,,143,,,110,1.93129771
-Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08,Secundaria,Gral. José de San Martín N° 859,Estatal,Jornada Simple (Hasta 20 hs. semanales),117,S/D,-35.12518394,-58.89219093,,100,,,40,1.196581197
-Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 04,Secundaria,Godoy Cruz N° 383,Estatal,"Jornada Completa/Doble (40 hs. y mas semanales), Jornada Extendida (de 35 a 39 hs. semanales) y Jornada Simple (Hasta 20 hs. semanales),",155,S/D,-35.04297395,-58.76913898,96,160,N/C,,160,2.683870968
-Barrio Belgrano de Máximo Paz Oeste,CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 15 (Ex Extensión 2060 ),Secundaria,"26 de Mayo S/N Rta. 3 Km. 43,5",Estatal,Jornada Simple (Hasta 20 hs. semanales),167,S/D,-34.89859906,-58.64808505,35,108,,,150,1.754491018
-Gobernador Udaondo,CORREDOR UDAONDO,E.E.S. Nº 07,Secundaria,Ruta 16 y calle Panamá,Estatal,Jornada Simple (Hasta 20 hs. semanales),62,S/D,-35.29722736,-58.59289068,25,88,,,40,2.467741935
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 6 Vicente Pereda,Primario,San Eduardo 110,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),835,S/D,-34.94017435,-58.61424014,150,800,,30,687,1.996407186
-Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,"J. I. N° 903 ""CEFERINO NAMUNCURA""",Inicial,Ntra. Señora de Lujan entre Belgrano y Don Bosco,Estatal,Jornada Simple (Hasta 20 hs. semanales),61,S/D,-35.12487681,-58.89151233,81,81,,,65,3.721311475
-Barrio Los Aromos,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 24 Carlos Pellegrini,Primario,San Juan N° 2450,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),144,No,-35.0401147,-58.73737095,100,140,N/C,35,130,2.8125
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,ESCUELA DE EDUCACIÓN PRIMARIA N°35,Primario,BOUCHARD,Estatal,Jornada Simple (Hasta 20 hs. semanales),328,S/D,-34.92384509,-58.62280271,,350,,,312,2.018292683
-Paraje La Noria,CORREDOR RUTA 3 CAMINO A MONTE,J. I. N° 913,Inicial,Ruta Nº 3 Km. 76.500,Estatal,Jornada Simple (Hasta 20 hs. semanales),30,S/D,-35.14746573,-58.7410863,,30,,,27,1.9
-Barrio Libertad,CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 914,Inicial,Hilario Ascazubi N° 2025,Estatal,Jornada Simple (Hasta 20 hs. semanales),90,S/D,-35.04382288,-58.76881537,80,125,N/C,,97,3.355555556
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 916,Inicial,General Saá 2291,Estatal,Jornada Simple (Hasta 20 hs. semanales),161,S/D,-34.93910895,-58.60811376,,169,,,155,2.01242236
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 3 Carolina Caffaro de Peredo,Primario,Matheu N° 544 y Manuel Acuña,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),455,S/D,-35.05056514,-58.75320222,170,500,N/C,,400,2.351648352
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,"E.E.E. N° 501 MINISTRO OSVALDO ZARINI"" formación integral",Escuela Especial,Azcuénaga N° 581,Estatal,Jornada Simple (Hasta 29 Hs semanales),106,S/D,-35.05097309,-58.75465723,74,114,N/C,,58,2.320754717
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº3 JOSÉ MANUEL ESTRADA,Secundaria,Libertad Esquina Mozotegui,Estatal,Jornada Simple (Hasta 20 hs. semanales),301,S/D,-35.05127397,-58.76456369,,200,N/C,,80,0.9302325581
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.E. N° 502,Escuela Especial,Belgrano N° 436,Estatal,Jornada Simple (Hasta 29 Hs semanales),99,S/D,-34.93715428,-58.61800284,60,50,,,53,1.646464646
-Villa Adriana,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 31 Leopoldo Lugones,Primario,"Estrada N° 739 Ruta Nº 205 Km. 57,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),98,S/D,-34.99796929,-58.68709254,60,75,,,70,2.091836735
-Cañuelas,CAÑUELAS CENTRO Y CASCO URBANO,E.S. Nº 3 JOSÉ MANUEL ESTRADA,Secundaria,Mitre N° 1250 Esquina Mozotegui,Estatal,Jornada Simple (Hasta 20 hs. semanales),668,Si (Gestionado por alumnos),-35.05127397,-58.76456369,1,300,N/C,,143,0.6646706587
-Villa Vissir,CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 23 Vicente López y Planes,Primario,Ayacucho S/N,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),59,S/D,-34.96202416,-58.69026076,59,118,JC,,35,3.593220339
-Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Primario,RUTA 205 KM 54.5 S/N,Privada,Jornada Simple (Hasta 20 hs. semanales),217,S/D,-34.98132349,-58.67915852,,,,,0,0
-Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Secundaria,RUTA 205 KM 54.5 S/N,Privada,Jornada Simple (Hasta 20 hs. semanales),207,S/D,-34.98132349,-58.67915852,,,,,0,0
-Uribelarrea,CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 4 José de San Martín,Primario,Gral. José de San Martín N° 859,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),171,S/D,-35.12518394,-58.89219093,180,306,,,138,3.649122807
-Barrio San Esteban,CORREDOR RUTA 3 CAMINO A CAPITAL,"E.P. Nº 33 ""EVA DUARTE""",Primario,"Ombú y Acacia S/N° Rta. 3 Km. 54,5",Estatal,Jornada Extendida (de 25 a 29 hs. semanales),462,S/D,-34.96091196,-58.72753879,161,465,,,462,2.354978355
-Barrio Los Pozos,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 25 Alte. Guillermo Brown,Primario,Pueyrredón y Dupuy Rta. Nº 3 Km. 52.500,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),410,S/D,-34.93809816,-58.73126751,96,400,,,378,2.131707317
-Villa Vissir,CORREDOR RUTA 205 CAMINO A CAPITAL,JIRIMM N° 3,Inicial,Ayacucho S/N,Estatal,Jornada Simple (Hasta 20 hs. semanales),10,S/D,-34.96212968,-58.69038418,15,15,,,7,3.7
-Villa “Santa Rosa”,CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 21 Patricias Argentinas,Primario,Segundo Sombra y Magallanes,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),108,S/D,-34.95102327,-58.75279071,90,170,,,100,3.333333333
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 1 Alfonsina Storni,Secundaria,Pereda y San Martìn,Estatal,Jornada Simple (Hasta 20 hs. semanales),867,S/D,-34.93966101,-58.61725242,,500,,,659,1.336793541
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 917,Inicial,Belgrano Nº 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),113,S/D,-34.9365881,-58.61841763,,128,,,110,2.10619469
-Barrio Los Álamos,RUTA 205 - CAMINO A LAS HERAS,E.P. N° 18 José Hernández,Primario,Cuartel 3º Camino Real a Las Heras,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),27,S/D,-35.01862123,-58.81051475,27,54,JC,,24,3.888888889
-Alejandro Petión,CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 13,Secundaria,"Ruta Nº 205 Km. 54 ,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),145,S/D,-34.97494405,-58.66646471,,120,,,135,1.75862069
-Vicente Casares,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 901,Inicial,Avda. Alte. Brown S/N Ruta Nº 205 Km. 51,Estatal,Jornada Simple (Hasta 20 hs. semanales),52,S/D,-34.96375438,-58.65170955,,68,,,60,2.461538462
-Gobernador Udaondo,CORREDOR UDAONDO,E.P. N° 9 Gabriela Mistral,Primario,Ruta 16 y calle Panamá,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),48,S/D,-35.29729324,-58.59289068,28,60,,,36,2.583333333
-Paraje El Deslinde,RUTA 6 CAMINO A LA PLATA,JIRIMM N° 1,Inicial,"Ruta Nº 6 Km. 82,500 Camino a La Plata",Estatal,Jornada Simple (Hasta 20 hs. semanales),2,S/D,-35.07775944,-58.65481628,,7,,,8,7.5
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 11,Secundaria,Rivadavia Nº 470,Estatal,Jornada Extendida (30 Hs semanales) Y Jornada Simple (Hasta 20 hs. semanales),310,S/D,-34.93882585,-58.61340567,174,257,,,248,2.190322581
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 918,Inicial,Bouchard y Cura Brochero S/N,Estatal,Jornada Simple (Hasta 20 hs. semanales),134,S/D,-34.92364071,-58.62234717,142,160,,,134,3.253731343
-Paraje El Taladro,CORREDOR RUTA 205 - CAMINO A LOBOS,J. I. N° 915,Inicial,"Bicentenario S/N Ruta Nº 205 Km 75,500",Estatal,Jornada Simple (Hasta 20 hs. semanales),16,S/D,-35.07244551,-58.86363315,24,24,,,20,4.25
-Máximo Paz,CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 904,Inicial,Av. Pereda 375 entre San Martin y Máximo Paz,Estatal,Jornada Simple (Hasta 20 hs. semanales),208,S/D,-34.93937845,-58.61769315,220,220,,,180,2.980769231
-Palmitas,CORREDOR UDAONDO,E.P. N° 5 Jorge Newbery,Primario,Rta. Pcial. N° 16,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),5,S/D,-35.21544015,-58.57164003,7,7,,,7,4.2
+ZONA,ESCUELA,NIVEL,SECTOR,JORNADA,TOTAL MATRICULA,LATITUD,LONGITUD,CUPOS COMEDOR,CUPOS DESAYUNO/MERIENDA,CUPOS ALBERGUE,PATIOS ABIERTOS,modulo MESA,IIS,CNP
+CAMINO PANELO,E.P. N° 13 Paula Albarracín de Sarmiento,Primario,Estatal,Completa/Doble (40 hs. y mas semanales),33,-3508303177,"-58,78846377",33,66,,,27,"3,8","140,00%"
+RUTA 205 - CAMINO A LAS HERAS,JIRIMM N° 4,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,"-35,01862123","-58,81051475",7,7,,,7,"4,2","140,00%"
+CORREDOR UDAONDO,J. I. N° 905,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),26,"-35,29708726","-58,59289068",30,20,,,17,"2,6","100,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 02 Cnel. De Marina Leonardo Rosales,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),635,"-35,06236728","-58,75264325",60,300,,,306,"1,0","24,57%"
+CAMINO PANELO,JIRIMM N° 6 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,"-35,08303177","-58,78846377",7,5,,,4,"3,2","124,00%"
+CORREDOR UDAONDO,E.P. N° 2 Tambor de Tacuarí,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),5,"-35,26434972","-58,67387492",6,6,,,6,"3,6","120,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 11 Nuestra Sra. del Carmen,Primario,Estatal,Extendida (25 a 29 hs),499,"-35,06240865","-58,75371417",40,430,,,466,"1,9","39,28%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,"J. I. N° 906 ""LA CALEDONIA""",Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),78,"-35,01893004","-58,7215432",,82,,,83,"2,1","42,05%"
+CORREDOR UDAONDO,E.P. N° 7 Sargento Cabral,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),12,"-35,19199013","-58,64993129",16,14,,,16,"3,8","126,67%"
+CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 919,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),140,"-35,05136428","-58,75413829",,180,,,110,"2,1","51,43%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 17 Vicente Casares,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),153,"-34,96405035","-58,6517067",,124,,,109,"1,5","32,42%"
+CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 902,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),201,"-35,04590565","-58,76306826",,288,,,169,"2,3","57,31%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 05,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),580,"-34,95374525","-58,73525537",98,300,,,454,"1,5","30,83%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 14,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),149,"-35,01928306","-58,72169429",40,145,,,101,"1,9","55,03%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 15 Hipólito Yrigoyen,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),177,"-35,04664009","-58,76182712",130,274,,22,132,"3,2","105,99%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08 ANEXO 1,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),57,"-35,07224814","-58,8637215",35,45,,,20,"1,8","68,42%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 907,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),80,"-34,97890335","-58,67463043",,90,,,73,"2,0","45,00%"
+CORREDOR UDAONDO,E.P. N° 19 Bernardino Rivadavia,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),8,"-35,16567752","-58,78896305",9,9,,,8,"3,3","112,50%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 12 Remedios de Escalada de San Martín,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),55,"-35,07244551","-58,86363315",38,62,,,38,"2,5","86,55%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,J.I. Nº 908,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),229,"-34,96063262","-58,72795605",224,224,,,194,"2,8","97,82%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 16 Manuel Belgrano,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),219,"-34,95374525","-58,73525537",65,195,,,227,"2,2","53,42%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 26 Mariano Moreno,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),199,"-34,89861613","-58,64804059",111,308,,34,202,"3,3","95,38%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 27 Bartolomé Mitre,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),507,"-35,05884857","-58,75942572",13,450,,,255,"1,4","37,04%"
+CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Primario,Privada,Jornada Simple (Hasta 20 hs. semanales),181,"-35,05084898","-58,76743844",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,INSTITUTO MODELO DE EDUCACION INTEGRAL,Secundaria,Privada,Jornada Completa/Doble (40 hs. y mas semanales),87,"-35,05084898","-58,76743844",,,,,0,"0,0","0,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJAN,Primario,Privada,Jornada Simple (Hasta 20 hs. semanales),208,"-34,9400768","-58,61392138",,,,,0,"0,0","0,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Inicial,Privada,Jornada Simple (Hasta 20 hs. semanales),267,"-34,9400118","-58,61388948",,,,,0,"0,0","0,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,INSTITUTO NUESTRA SEÑORA DE LUJÁN,Secundaria,Privada,Jornada Simple (Hasta 20 hs. semanales),206,"-34,94003562","-58,61381526",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SANTA MARIA,Primario,Privada,Jornada Simple (Hasta 20 hs. semanales),936,"-35,05864217","-58,74807558",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO SECUNDARIO SANTA MARIA,Secundaria,Privada,Jornada Simple (Hasta 20 hs. semanales),736,"-35,05475463","-58,7617634",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,JARDÍN DE INFANTES LA SAGRADA FAMILIA,Inicial,Privada,Jornada Simple (Hasta 20 hs. semanales),327,"-35,05807919","-58,75999575",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Inicial,Privada,Jornada Simple (Hasta 20 hs. semanales),82,"-35,03721646","-58,74341626",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Primario,Privada,Jornada Extendida (de 21 a 24 hs. semanales),182,"-35,03698613","-58,74329155",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,COLEGIO LAS CAÑUELAS,Secundaria,Privada,Jornada Extendida (30 Hs semanales),179,"-35,03698613","-58,74329155",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Inicial,Privada,Jornada Simple (Hasta 20 hs. semanales),59,"-35,05744769","-58,7596404",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Primario,Privada,Jornada Simple (Hasta 20 hs. semanales),59,"-35,05744769","-58,7596404",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,CENTRO EDUCATIVO EL JACARANDA,Secundaria,Privada,Jornada Simple (Hasta 20 hs. semanales),,"-35,05744769","-58,7596404",,,,,0,,"0,00%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,E.A.S DON BOSCO,Secundaria,Privada,Extendida,410,"-35,1330864","-58,87657567",,,,,0,"0,0","0,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.S.T. Nº 1 Cnel. Manuel Dorrego,Secundaria,Estatal,"Jornada Extendida (de 35 a 39 hs. semanales), Jornada Simple (Hasta 20 hs. semanales)",1081,"-35,05872514","-58,76063681",100,750,,,444,"1,2","33,30%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 1 Domingo F. Sarmiento,Primario,Estatal,Extendida (25 a 28 hs semanales),537,"-35,05439887","-58,7618878",7,475,,,375,"1,6","36,16%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 09,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),529,"-35,05069273","-58,75328858",45,250,,,281,"1,1","24,01%"
+CORREDOR RUTA 3 CAMINO A MONTE,E.E.S. Nº 16 (Ex - Extensión 3031),Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),72,"-35,1465727","-58,74148636",37,80,,,65,"2,5","75,28%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 20 Malvinas Argentinas,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),224,"-34,94557904","-58,62415353",100,230,,,190,"2,3","67,86%"
+CORREDOR UDAONDO,JIRIMM N° 5 JARDÍN DE INFANTES RURAL DE MATRÍCULA MÍNIMA,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),3,"-35,19235773","-58,64995977",2,2,,,2,"2,0","66,67%"
+CAÑUELAS CENTRO Y CASCO URBANO,"J. I. N° 911 ""EL PEQUEÑO DE ASIS""",Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),128,"-35,04951501","-58,76355394",,155,,,86,"1,9","48,44%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 28 Clotilde Guillén de Rezzano,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),448,"-34,9388936","-58,60916797",458,968,,,389,"4,1","147,77%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 06,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),399,"-34,93809816","-58,73126751",,287,,,233,"1,3","28,77%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 32 José Manuel Estrada,Primario,Estatal,Jornada Extendida (de 21 a 24 hs. semanales),300,"-35,0551473","-58,75782247",,300,,,99,"1,3","40,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,"E.E.S. Nº 12 ""JULIO CAO, HÉROE DE MALVINAS""",Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),168,"-35,04010823","-58,73756626",35,50,,,80,"1,0","24,40%"
+RUTA 6 CAMINO A LA PLATA,E.P. N° 29 Antártida Argentina,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),23,"-35,07762311","-58,65486957",24,48,,,19,"4,0","146,09%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,J. I. N° 910,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),141,"-34,89856895","-58,64797376",62,151,,,150,"2,6","69,22%"
+CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION I DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº12,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),80,"-35,04664009","-58,76182712",22,35,,,45,"1,3","34,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 17 (Ex- Extension N° 2100),Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),247,"-34,94557904","-58,62415353",,139,,,154,"1,2","22,51%"
+CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 912,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),121,"-35,04059402","-58,74145502",,110,,,100,"1,7","36,36%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 18 (Ex- Extensión Nº 2140),Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),108,"-34,99796929","-58,68709254",25,32,,,87,"1,3","25,74%"
+CORREDOR RUTA 3 CAMINO A MONTE,E.P. N° 8 Martín Guemes,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),81,"-35,14659435","-58,74158876",87,172,,,72,"4,1","149,38%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 14 Juan Martín de Pueyrredón,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),212,"-35,01928306","-58,72169429",55,160,,,145,"1,7","45,75%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 34 Héroes de Malvinas,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),186,"-35,04297395","-58,76913898",190,380,,,185,"4,1","143,01%"
+CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 909,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),223,"-35,0629581","-58,75435172",,282,,,180,"2,1","50,58%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 10,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),185,"-34,96401504","-58,65168389",,112,,,94,"1,1","24,22%"
+RUTA 6 CAMINO A LA PLATA,CENTRO EDUCATIVO PARA LA PRODUCCIÓN TOTAL Nº33,Secundaria,Estatal,Completa/alternancia,101,"-35,09091202","-58,59271988",38,0,38,,111,"1,9","22,57%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 30 Juana Manso,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),131,"-34,97890335","-58,67463043",,143,,,110,"1,9","43,66%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,E.E.S. Nº 08,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),117,"-35,12518394","-58,89219093",,100,,,40,"1,2","34,19%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.E.S. Nº 04,Secundaria,Estatal,"Jornada Completa/Doble (40 hs. y mas semanales), Jornada Extendida (de 35 a 39 hs. semanales) y Jornada Simple (Hasta 20 hs. semanales),",155,"-35,04297395","-58,76913898",96,160,,,160,"2,7","78,45%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.E.S. Nº 15 (Ex Extensión 2060 ),Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),167,"-34,89859906","-58,64808505",35,108,,,150,"1,8","38,44%"
+CORREDOR UDAONDO,E.E.S. Nº 07,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),62,"-35,29722736","-58,59289068",25,88,,,40,"2,5","80,97%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 6 Vicente Pereda,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),835,"-34,94017435","-58,61424014",150,800,,30,687,"2,0","49,10%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,"J. I. N° 903 ""CEFERINO NAMUNCURA""",Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),61,"-35,12487681","-58,89151233",81,81,,,65,"3,7","132,79%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 24 Carlos Pellegrini,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) y Jornada Simple (Hasta 20 hs. semanales),144,"-35,0401147","-58,73737095",100,140,,35,130,"2,8","80,56%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,ESCUELA DE EDUCACIÓN PRIMARIA N°35,Primario,Estatal,Jornada Simple (Hasta 20 hs. semanales),328,"-34,92384509","-58,62280271",,350,,,312,"2,0","42,68%"
+CORREDOR RUTA 3 CAMINO A MONTE,J. I. N° 913,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),30,"-35,14746573","-58,7410863",,30,,,27,"1,9","40,00%"
+CAÑUELAS CENTRO Y CASCO URBANO,J. I. N° 914,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),90,"-35,04382288","-58,76881537",80,125,,,97,"3,4","108,89%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 916,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),161,"-34,93910895","-58,60811376",,169,,,155,"2,0","41,99%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.P. N° 3 Carolina Caffaro de Peredo,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),455,"-35,05056514","-58,75320222",170,500,,,400,"2,4","66,37%"
+CAÑUELAS CENTRO Y CASCO URBANO,"E.E.E. N° 501 MINISTRO OSVALDO ZARINI"" formación integral",Escuela Especial,Estatal,Jornada Simple (Hasta 29 Hs semanales),106,"-35,05097309","-58,75465723",74,114,,,58,"2,3","84,91%"
+CAÑUELAS CENTRO Y CASCO URBANO,EXTENSION DE ESCUELA DE EDUCACIÓN SECUNDARIA Nº3 JOSÉ MANUEL ESTRADA,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),301,"-35,05127397","-58,76456369",,200,,,80,"0,9","26,58%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.E. N° 502,Escuela Especial,Estatal,Jornada Simple (Hasta 29 Hs semanales),99,"-34,93715428","-58,61800284",60,50,,,53,"1,6","56,57%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 31 Leopoldo Lugones,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),98,"-34,99796929","-58,68709254",60,75,,,70,"2,1","67,35%"
+CAÑUELAS CENTRO Y CASCO URBANO,E.S. Nº 3 JOSÉ MANUEL ESTRADA,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),668,"-35,05127397","-58,76456369",1,300,,,143,"0,7","18,05%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.P. N° 23 Vicente López y Planes,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),59,"-34,96202416","-58,69026076",59,118,,,35,"3,6","140,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Primario,Privada,Jornada Simple (Hasta 20 hs. semanales),217,"-34,98132349","-58,67915852",,,,,0,"0,0","0,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,LOS SILOS,Secundaria,Privada,Jornada Simple (Hasta 20 hs. semanales),207,"-34,98132349","-58,67915852",,,,,0,"0,0","0,00%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,E.P. N° 4 José de San Martín,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),171,"-35,12518394","-58,89219093",180,306,,,138,"3,6","134,74%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,"E.P. Nº 33 ""EVA DUARTE""",Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),462,"-34,96091196","-58,72753879",161,465,,,462,"2,4","61,17%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 25 Alte. Guillermo Brown,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),410,"-34,93809816","-58,73126751",96,400,,,378,"2,1","53,07%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,JIRIMM N° 3,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),10,"-34,96212968","-58,69038418",15,15,,,7,"3,7","150,00%"
+CORREDOR RUTA 3 CAMINO A CAPITAL,E.P. N° 21 Patricias Argentinas,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales) Y Jornada Simple (Hasta 20 hs. semanales),108,"-34,95102327","-58,75279071",90,170,,,100,"3,3","112,96%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 1 Alfonsina Storni,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),867,"-34,93966101","-58,61725242",,500,,,659,"1,3","23,07%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. Nº 917,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),113,"-34,9365881","-58,61841763",,128,,,110,"2,1","45,31%"
+RUTA 205 - CAMINO A LAS HERAS,E.P. N° 18 José Hernández,Primario,Estatal,Jornada Completa/Doble (40 hs. y mas semanales),27,"-35,01862123","-58,81051475",27,54,,,24,"3,9","140,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.S. Nº 13,Secundaria,Estatal,Jornada Simple (Hasta 20 hs. semanales),145,"-34,97494405","-58,66646471",,120,,,135,"1,8","33,10%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 901,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),52,"-34,96375438","-58,65170955",,68,,,60,"2,5","52,31%"
+CORREDOR UDAONDO,E.P. N° 9 Gabriela Mistral,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),48,"-35,29729324","-58,59289068",28,60,,,36,"2,6","85,00%"
+RUTA 6 CAMINO A LA PLATA,JIRIMM N° 1,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),2,"-35,07775944","-58,65481628",,7,,,8,"7,5","140,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,E.E.S. Nº 11,Secundaria,Estatal,Jornada Extendida (30 Hs semanales) Y Jornada Simple (Hasta 20 hs. semanales),310,"-34,93882585","-58,61340567",174,257,,,248,"2,2","66,84%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 918,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),134,"-34,92364071","-58,62234717",142,160,,,134,"3,3","111,34%"
+CORREDOR RUTA 205 - CAMINO A LOBOS,J. I. N° 915,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),16,"-35,07244551","-58,86363315",24,24,,,20,"4,3","150,00%"
+CORREDOR RUTA 205 CAMINO A CAPITAL,J. I. N° 904,Inicial,Estatal,Jornada Simple (Hasta 20 hs. semanales),208,"-34,93937845","-58,61769315",220,220,,,180,"3,0","105,77%"
+CORREDOR UDAONDO,E.P. N° 5 Jorge Newbery,Primario,Estatal,Jornada Extendida (de 25 a 29 hs. semanales),5,"-35,21544015","-58,57164003",7,7,,,7,"4,2","140,00%"
 </script>
 
 <script>
-// --- CONFIGURACIÓN ---
+// --- CONFIGURACIÓN DE COLORES ---
 const zoneColors = {
   "gestion": {
     "R205-LAS HERAS": "#e6194b", "PANELO": "#3cb44b", "R3-MONTE": "#ffe119",
@@ -275,7 +259,7 @@ const map = L.map('map', {zoomControl: false}).setView([-35.05, -58.75], 11);
 L.control.zoom({position: 'topleft'}).addTo(map);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM contributors', maxZoom: 19 }).addTo(map);
 
-// LÍMITE AUTOMÁTICO (BUFFER + UNION)
+// LÍMITE AUTOMÁTICO
 try {
     let unionPoly = turf.buffer(zonesData.features[0], 0.3, {units: 'kilometers'}); 
     for(let i=1; i<zonesData.features.length; i++){
@@ -300,82 +284,163 @@ L.Control.DownloadMap = L.Control.extend({
 });
 new L.Control.DownloadMap({ position: 'topleft' }).addTo(map);
 
-// --- PROCESAMIENTO CSV A GEOJSON ---
+// --- HELPER: DATOS SEGUROS ---
+function safeInt(val) {
+    if(!val || val === 'S/D' || val === 'N/C' || val === '') return 0;
+    return parseInt(val) || 0;
+}
+function safeFloat(val) {
+    if(!val || val === 'S/D' || val === 'N/C' || val === '') return 0;
+    return parseFloat(val.replace(',','.')) || 0;
+}
+
+// --- HELPER: CÁLCULOS ESTADÍSTICOS ---
+function calculateStats(values) {
+    const validValues = values.filter(v => v !== null && !isNaN(v)); // Filtrar nulos
+    if (validValues.length === 0) return { min: 0, max: 0, mean: 0, median: 0, count: 0 };
+    
+    validValues.sort((a, b) => a - b);
+    
+    const sum = validValues.reduce((a, b) => a + b, 0);
+    const count = validValues.length;
+    const mean = sum / count;
+    
+    let median;
+    const mid = Math.floor(count / 2);
+    if (count % 2 !== 0) {
+        median = validValues[mid];
+    } else {
+        median = (validValues[mid - 1] + validValues[mid]) / 2;
+    }
+
+    return {
+        min: validValues[0],
+        max: validValues[count - 1],
+        mean: mean,
+        median: median,
+        count: count
+    };
+}
+
+// --- LÓGICA DE PANEL (ESTADÍSTICAS) ---
+function showZoneStats(zoneName) {
+    const schoolsInZone = schoolsData.features.filter(f => f.properties.zoneName === zoneName);
+    const iisValues = schoolsInZone.map(f => f.properties.iis_school);
+    const cnpValues = schoolsInZone.map(f => f.properties.cnp_school);
+
+    const iisStats = calculateStats(iisValues);
+    const cnpStats = calculateStats(cnpValues);
+
+    const htmlContent = `
+        <div class="bg-white rounded-xl border border-blue-200 shadow-md overflow-hidden animate-fade-in">
+          <div class="bg-slate-800 p-4 border-b border-slate-700">
+            <h3 class="text-lg font-bold text-white leading-tight uppercase tracking-wide">${zoneName}</h3>
+            <span class="text-[11px] font-bold text-slate-300 mt-1 block">Análisis Territorial SAE</span>
+          </div>
+          
+          <div class="p-4 space-y-6">
+            <div class="flex items-center justify-between bg-slate-50 p-3 rounded border border-slate-200">
+                <span class="text-xs font-bold text-slate-500 uppercase">Total Escuelas</span>
+                <span class="text-xl font-bold text-slate-800">${iisStats.count}</span>
+            </div>
+
+            <div>
+              <h4 class="text-[11px] font-bold text-red-600 uppercase tracking-wider mb-2 border-b border-red-100 pb-1">IIS (Intensidad)</h4>
+              <div class="grid grid-cols-2 gap-2 text-center">
+                <div class="bg-red-50 p-2 rounded border border-red-100">
+                    <span class="block text-lg font-bold text-slate-700">${iisStats.mean.toFixed(2)}</span>
+                    <span class="text-[9px] text-slate-500 uppercase">Media</span>
+                </div>
+                <div class="bg-white p-2 rounded border border-slate-100 shadow-sm">
+                    <span class="block text-lg font-bold text-slate-700">${iisStats.median.toFixed(2)}</span>
+                    <span class="text-[9px] text-slate-500 uppercase">Mediana</span>
+                </div>
+                <div class="col-span-2 flex justify-between px-4 py-1 bg-slate-50 rounded text-[10px] text-slate-500 font-mono">
+                    <span>Min: <b>${iisStats.min.toFixed(2)}</b></span>
+                    <span>Max: <b>${iisStats.max.toFixed(2)}</b></span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 class="text-[11px] font-bold text-green-600 uppercase tracking-wider mb-2 border-b border-green-100 pb-1">CNP (Nutrición)</h4>
+              <div class="grid grid-cols-2 gap-2 text-center">
+                <div class="bg-green-50 p-2 rounded border border-green-100">
+                    <span class="block text-lg font-bold text-slate-700">${cnpStats.mean.toFixed(1)}%</span>
+                    <span class="text-[9px] text-slate-500 uppercase">Media</span>
+                </div>
+                <div class="bg-white p-2 rounded border border-slate-100 shadow-sm">
+                    <span class="block text-lg font-bold text-slate-700">${cnpStats.median.toFixed(1)}%</span>
+                    <span class="text-[9px] text-slate-500 uppercase">Mediana</span>
+                </div>
+                <div class="col-span-2 flex justify-between px-4 py-1 bg-slate-50 rounded text-[10px] text-slate-500 font-mono">
+                    <span>Min: <b>${cnpStats.min.toFixed(0)}%</b></span>
+                    <span>Max: <b>${cnpStats.max.toFixed(0)}%</b></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+    `;
+
+    const container = document.getElementById('stats-container');
+    container.innerHTML = htmlContent;
+    document.getElementById('empty-state').classList.add('hidden');
+    switchTab('resumen');
+}
+
+// --- CARGA DE DATOS ---
 let schoolsData = { "type": "FeatureCollection", "features": [] };
 
 function parseCSVAndLoad() {
     const csvText = document.getElementById('csv-data').innerText.trim();
-    // Regex para splitear CSV respetando comillas
-    const lines = csvText.split('\n');
-    const headers = lines[0].split(','); // Asumimos headers simples
     
-    // Mapeo de indices
-    const idx = {};
-    headers.forEach((h, i) => idx[h.trim()] = i);
+    Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            let count = 0;
+            results.data.forEach(row => {
+                const lat = safeFloat(row['LATITUD']);
+                const lng = safeFloat(row['LONGITUD']);
+                
+                if(lat === 0 || lng === 0) return;
 
-    // Parseo línea a línea (saltando header)
-    for(let i=1; i<lines.length; i++) {
-        // Simple split por coma (ojo: fallará si hay comas dentro de nombres, pero el CSV parece limpio o usaremos regex)
-        // Regex robusto para CSV:
-        const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || lines[i].split(',');
-        // Ajuste simple: usar split y limpiar comillas si es básico
-        // Dado el formato visto, un split por coma es arriesgado para "J. I. ...".
-        // Usaremos una funcion helper.
-        const row = parseCSVLine(lines[i]);
-        
-        if(row.length < 5) continue;
+                const zonaRaw = row['ZONA'] || '';
+                const zoneName = zoneMapping[zonaRaw] || 'DESCONOCIDA';
+                
+                const matricula = safeInt(row['TOTAL MATRICULA']);
+                const cupoCom = safeInt(row['CUPOS COMEDOR']);
+                const cupoDMC = safeInt(row['CUPOS DESAYUNO/MERIENDA']);
+                const cupoMesa = safeInt(row['modulo MESA']);
+                const iis = safeFloat(row['IIS']);
+                
+                let cnp = 0;
+                if(matricula > 0) cnp = ((cupoCom + cupoDMC) / matricula) * 100;
 
-        const zonaRaw = row[idx['ZONA']] || '';
-        const zoneName = zoneMapping[zonaRaw] || 'DESCONOCIDA';
-        
-        const lat = parseFloat(row[idx['LATITUD']]);
-        const lng = parseFloat(row[idx['LONGITUD']]);
-        
-        if(isNaN(lat) || isNaN(lng)) continue;
-
-        const matricula = parseInt(row[idx['TOTAL MATRICULA']]) || 0;
-        const cupoCom = parseInt(row[idx['CUPOS COMEDOR']]) || 0;
-        const cupoDMC = parseInt(row[idx['CUPOS DESAYUNO/MERIENDA']]) || 0;
-        const cupoMesa = parseInt(row[idx['modulo MESA']]) || 0;
-        const iis = parseFloat(row[idx['IIS']]) || 0;
-        
-        // Calculo CNP si no existe (Cobertura prestacional)
-        let cnp = 0;
-        if(matricula > 0) cnp = ((cupoCom + cupoDMC) / matricula) * 100;
-
-        schoolsData.features.push({
-            "type": "Feature",
-            "geometry": { "type": "Point", "coordinates": [lng, lat] },
-            "properties": {
-                "name": row[idx['ESCUELA']].replace(/"/g, ''),
-                "nivel": row[idx['NIVEL']],
-                "matricula": matricula,
-                "cupos_comedor": cupoCom,
-                "cupos_dmc": cupoDMC,
-                "cupos_mesa": cupoMesa,
-                "iis_school": iis,
-                "cnp_school": cnp,
-                "zoneName": zoneName
-            }
-        });
-    }
-    // Cargar al mapa
-    schoolsLayer.addData(schoolsData);
-}
-
-// Helper simple para CSV
-function parseCSVLine(text) {
-    let re_valid = /^\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*(?:,\s*(?:'[^'\\]*(?:\\[\S\s][^'\\]*)*'|"[^"\\]*(?:\\[\S\s][^"\\]*)*"|[^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*)*$/;
-    let re_value = /(?!\s*$)\s*(?:'([^'\\]*(?:\\[\S\s][^'\\]*)*)'|"([^"\\]*(?:\\[\S\s][^"\\]*)*)"|([^,'"\s\\]*(?:\s+[^,'"\s\\]+)*))\s*(?:,|$)/g;
-    let a = [];
-    text.replace(re_value, function(m0, m1, m2, m3) {
-        if (m1 !== undefined) a.push(m1.replace(/\\'/g, "'"));
-        else if (m2 !== undefined) a.push(m2.replace(/\\"/g, '"'));
-        else if (m3 !== undefined) a.push(m3);
-        return '';
+                schoolsData.features.push({
+                    "type": "Feature",
+                    "geometry": { "type": "Point", "coordinates": [lng, lat] },
+                    "properties": {
+                        "name": row['ESCUELA'] || 'Sin Nombre',
+                        "nivel": row['NIVEL'] || '',
+                        "matricula": matricula,
+                        "cupos_comedor": cupoCom,
+                        "cupos_dmc": cupoDMC,
+                        "cupos_mesa": cupoMesa,
+                        "iis_school": iis,
+                        "cnp_school": cnp,
+                        "zoneName": zoneName
+                    }
+                });
+                count++;
+            });
+            
+            schoolsLayer.addData(schoolsData);
+            document.getElementById('counter-schools').innerText = `SE CARGARON ${count} ESCUELAS CORRECTAMENTE`;
+            renderBoxPlots();
+        }
     });
-    if (/,\s*$/.test(text)) a.push('');
-    return a;
 }
 
 // --- ESTILOS ---
@@ -405,22 +470,56 @@ function styleSchools(feature) {
   return { radius: 6, fillColor: color, color: "#fff", weight: 1.5, opacity: 1, fillOpacity: 1 };
 }
 
-// Inicialización de capas
+// --- CAPAS & POPUP MODIFICADO ---
 zonesLayer = L.geoJSON(zonesData, {
   style: styleZones,
   onEachFeature: (feature, layer) => {
     layer.bindTooltip(feature.properties.name, { permanent: true, direction: "center", className: "zone-label" });
+    layer.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        showZoneStats(feature.properties.name);
+    });
   }
 }).addTo(map);
 
 schoolsLayer = L.geoJSON(null, {
   pointToLayer: (feature, latlng) => L.circleMarker(latlng, styleSchools(feature)),
   onEachFeature: (feature, layer) => {
-    layer.on('click', (e) => { L.DomEvent.stopPropagation(e); updateSelectionDetail(feature.properties); });
+    const p = feature.properties;
+    // --- NUEVO DISEÑO DE POPUP MEJORADO ---
+    const popupContent = `
+        <div class="font-sans text-slate-800">
+            <div class="bg-blue-900 text-white p-3 pr-8">
+                <h3 class="font-bold text-sm leading-tight">${p.name}</h3>
+                <p class="text-[10px] opacity-80 mt-1 uppercase tracking-wider">${p.nivel} • ${p.zoneName}</p>
+            </div>
+            <div class="p-3 bg-white">
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div class="bg-slate-50 p-2 rounded border border-slate-100">
+                        <span class="block text-lg font-bold text-slate-700">${p.matricula}</span>
+                        <span class="text-[9px] text-slate-400 uppercase tracking-wide">Matrícula</span>
+                    </div>
+                    <div class="bg-orange-50 p-2 rounded border border-orange-100">
+                         <span class="block text-lg font-bold text-orange-600">${p.cupos_comedor}</span>
+                        <span class="text-[9px] text-orange-400 uppercase tracking-wide">Comedor</span>
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <div class="bg-red-50 text-red-700 px-2 py-1 rounded text-[10px] font-bold border border-red-100 flex-1 text-center">
+                        IIS: ${p.iis_school.toFixed(2)}
+                    </div>
+                    <div class="bg-green-50 text-green-700 px-2 py-1 rounded text-[10px] font-bold border border-green-100 flex-1 text-center">
+                        CNP: ${p.cnp_school.toFixed(0)}%
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    layer.bindPopup(popupContent);
   }
 }).addTo(map);
 
-// --- INTERFAZ ---
+// --- INTERFAZ & GRÁFICOS ---
 function setMode(mode) {
   currentMode = mode;
   document.querySelectorAll('button[id^="btn-"]').forEach(btn => {
@@ -431,21 +530,6 @@ function setMode(mode) {
   schoolsLayer.setStyle(styleSchools);
   zonesLayer.eachLayer(layer => { if(mode === 'gestion') layer.openTooltip(); else layer.closeTooltip(); });
   updateLegend();
-}
-
-function updateSelectionDetail(props) {
-    document.getElementById('empty-state').classList.add('hidden');
-    document.getElementById('selection-card').classList.remove('hidden');
-    document.getElementById('sel-title').innerText = props.name;
-    document.getElementById('sel-badge-nivel').innerText = props.nivel;
-    document.getElementById('sel-badge-zona').innerText = props.zoneName;
-    document.getElementById('sel-matricula').innerText = props.matricula;
-    document.getElementById('sel-cupos-comedor').innerText = props.cupos_comedor;
-    document.getElementById('sel-cupos-dmc').innerText = props.cupos_dmc;
-    document.getElementById('sel-cupos-mesa').innerText = props.cupos_mesa;
-    document.getElementById('sel-iis-val').innerText = props.iis_school.toFixed(2);
-    document.getElementById('sel-cnp-val').innerText = props.cnp_school.toFixed(1) + "%";
-    switchTab('resumen');
 }
 
 function switchTab(tab) {
@@ -478,7 +562,6 @@ function updateLegend() {
   container.innerHTML = html;
 }
 
-// BOXPLOTS
 function renderBoxPlots() {
     if(boxPlotIIS) boxPlotIIS.destroy();
     if(boxPlotCNP) boxPlotCNP.destroy();
@@ -523,7 +606,7 @@ async function downloadElement(elementId, fileName) {
 
 function downloadPanel() {
     const activeTab = document.getElementById('tab-resumen').classList.contains('active') ? 'resumen' : 'stats';
-    downloadElement(activeTab === 'resumen' ? 'selection-card' : 'content-stats', 'SAE_' + activeTab);
+    downloadElement(activeTab === 'resumen' ? 'content-resumen' : 'content-stats', 'SAE_' + activeTab);
 }
 
 // INICIO
